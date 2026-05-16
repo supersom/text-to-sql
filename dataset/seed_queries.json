@@ -1,0 +1,110 @@
+[
+  {
+    "id": "sq_001",
+    "question": "How many claims were filed last year?",
+    "ground_truth_sql": "SELECT COUNT(*) as total_claims FROM claims WHERE strftime('%Y', filed_date) = strftime('%Y', date('now', '-1 year'))",
+    "complexity": "Simple",
+    "operations": ["Filter"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_002",
+    "question": "What is the total amount of high-risk claims that are still open?",
+    "ground_truth_sql": "SELECT SUM(amount) as total_open_high_risk FROM claims WHERE risk_level = 'High' AND status = 'Open'",
+    "complexity": "Simple",
+    "operations": ["Filter"],
+    "risk_level": "Medium",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_003",
+    "question": "Which adjuster has handled the most claims?",
+    "ground_truth_sql": "SELECT a.name, COUNT(c.claim_id) as claim_count FROM claims c JOIN adjusters a ON c.adjuster_id = a.adjuster_id GROUP BY a.adjuster_id, a.name ORDER BY claim_count DESC LIMIT 1",
+    "complexity": "Medium",
+    "operations": ["Join", "GroupBy"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_004",
+    "question": "What is the distribution of claims by risk level?",
+    "ground_truth_sql": "SELECT risk_level, COUNT(*) as count, ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM claims), 2) as percentage FROM claims GROUP BY risk_level ORDER BY risk_level",
+    "complexity": "Medium",
+    "operations": ["GroupBy", "Subquery"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_005",
+    "question": "How much fraud savings have been captured from resolved fraud flags?",
+    "ground_truth_sql": "SELECT SUM(savings) as total_fraud_savings, COUNT(*) as resolved_flags FROM fraud_flags WHERE resolved = 1",
+    "complexity": "Simple",
+    "operations": ["Filter"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_006",
+    "question": "What are the top 3 fraud flag types by frequency?",
+    "ground_truth_sql": "SELECT flag_type, COUNT(*) as frequency FROM fraud_flags GROUP BY flag_type ORDER BY frequency DESC LIMIT 3",
+    "complexity": "Simple",
+    "operations": ["GroupBy"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_007",
+    "question": "Show me all claims with amounts over $50,000 that have not been resolved yet",
+    "ground_truth_sql": "SELECT claim_id, policy_id, filed_date, amount, status, risk_level FROM claims WHERE amount > 50000 AND status IN ('Open', 'Under Review') ORDER BY amount DESC",
+    "complexity": "Simple",
+    "operations": ["Filter"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_008",
+    "question": "Which department has the highest average claim amount?",
+    "ground_truth_sql": "SELECT a.department, ROUND(AVG(c.amount), 2) as avg_claim_amount FROM claims c JOIN adjusters a ON c.adjuster_id = a.adjuster_id GROUP BY a.department ORDER BY avg_claim_amount DESC LIMIT 1",
+    "complexity": "Medium",
+    "operations": ["Join", "GroupBy"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_009",
+    "question": "How many policies are currently active versus expired?",
+    "ground_truth_sql": "SELECT status, COUNT(*) as count FROM policies WHERE status IN ('Active', 'Expired') GROUP BY status",
+    "complexity": "Simple",
+    "operations": ["GroupBy", "Filter"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_010",
+    "question": "What is the average time to resolve a claim in days?",
+    "ground_truth_sql": "SELECT ROUND(AVG(julianday(resolved_date) - julianday(filed_date)), 1) as avg_days_to_resolve FROM claims WHERE resolved_date IS NOT NULL",
+    "complexity": "Medium",
+    "operations": ["Filter"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_011",
+    "question": "List all claims that have been flagged for fraud and are still unresolved, along with the claim amount and flag type",
+    "ground_truth_sql": "SELECT c.claim_id, c.amount, c.status, ff.flag_type, ff.flagged_at FROM claims c JOIN fraud_flags ff ON c.claim_id = ff.claim_id WHERE ff.resolved = 0 ORDER BY c.amount DESC",
+    "complexity": "Complex",
+    "operations": ["Join", "Filter"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_012",
+    "question": "Which region has the highest number of high-risk claims per adjuster?",
+    "ground_truth_sql": "SELECT a.region, ROUND(CAST(COUNT(c.claim_id) AS REAL) / COUNT(DISTINCT a.adjuster_id), 2) as high_risk_claims_per_adjuster FROM claims c JOIN adjusters a ON c.adjuster_id = a.adjuster_id WHERE c.risk_level = 'High' GROUP BY a.region ORDER BY high_risk_claims_per_adjuster DESC",
+    "complexity": "Complex",
+    "operations": ["Join", "GroupBy", "Filter", "Subquery"],
+    "risk_level": "Medium",
+    "domain": "Insurance"
+  }
+]

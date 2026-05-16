@@ -1,0 +1,28 @@
+# Environment variables — never commit real keys
+.env
+
+# Virtual environment
+.venv/
+
+# Generated database
+data/
+
+# Generated dataset (re-created by generate_dataset.py)
+dataset/golden_dataset.json
+dataset/feedback.json
+
+# Evaluation results
+evaluation/results.json
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
