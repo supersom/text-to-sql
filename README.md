@@ -1,4 +1,4 @@
-# ClearSpeed Text-to-SQL — NLP Query Interface
+# Text-to-SQL — NLP Query Interface
 
 A local, enterprise-grade Text-to-SQL application that translates natural language questions into executable SQL queries using Claude. Built with a LangGraph multi-agent pipeline, a golden dataset evaluation framework, and OPIK for experiment tracking.
 
