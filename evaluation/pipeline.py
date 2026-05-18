@@ -43,7 +43,7 @@ def evaluate_single(entry: dict) -> dict:
     query_result = result.get("query_result", [])
 
     validity = sql_validity(gen_sql)
-    accuracy = execution_accuracy(gen_sql, ground_truth_sql)
+    exec_acc_result = execution_accuracy(gen_sql, ground_truth_sql)
     relevance = answer_relevance(question, gen_sql, query_result)
 
     return {
@@ -53,7 +53,12 @@ def evaluate_single(entry: dict) -> dict:
         "generated_sql": gen_sql,
         "governance_result": gov_result,
         "sql_validity": validity,
-        "execution_accuracy": accuracy,
+        "execution_accuracy": exec_acc_result["score"],
+        "accu_judge_reason": exec_acc_result["accu_judge_reason"],
+        "gen_rows": exec_acc_result["gen_rows"],
+        "gt_rows": exec_acc_result["gt_rows"],
+        "gen_error": exec_acc_result["gen_error"],
+        "gt_error": exec_acc_result["gt_error"],
         "answer_relevance": relevance,
         "complexity": entry.get("complexity"),
         "operations": entry.get("operations", []),

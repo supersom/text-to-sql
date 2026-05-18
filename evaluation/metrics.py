@@ -1,20 +1,25 @@
 """
-Three mandatory evaluation metrics:
-1. sql_validity     — heuristic: does the SQL execute without error?
-2. execution_accuracy — heuristic: does the result set match ground truth?
+Evaluation metrics:
+1. sql_validity       — heuristic: does the SQL execute without error?
+2. execution_accuracy — F1 heuristic with LLM-as-judge fallback below threshold
 3. answer_relevance   — LLM-as-judge: does the answer semantically address intent?
+4. schema_recall      — heuristic: did the model use all tables required by the ground truth?
 """
 import anthropic
 import sys
 from pathlib import Path
+from typing import TypedDict
+from opik import track
+import sqlglot
+import sqlglot.expressions as exp
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import ANTHROPIC_API_KEY, MODEL_JUDGE
+from config import ANTHROPIC_API_KEY, MODEL_JUDGE, OPIK_PROJECT_NAME, THRESHOLD_EXECUTION_ACCURACY
 from db.database import run_query
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-
+@track(project_name=OPIK_PROJECT_NAME)
 def sql_validity(sql: str) -> bool:
     """Returns True if the SQL executes without error."""
     if not sql or not sql.strip().upper().startswith("SELECT"):
@@ -22,27 +27,120 @@ def sql_validity(sql: str) -> bool:
     _, error = run_query(sql)
     return error is None
 
+class ExecutionAccuracyResult(TypedDict):
+    score: float
+    gen_rows: list[dict] | None
+    gt_rows: list[dict] | None
+    norm_gen_rows: frozenset | None
+    norm_gt_rows: frozenset | None
+    gen_error: str | None
+    gt_error: str | None
+    accu_judge_reason: str | None
 
-def execution_accuracy(generated_sql: str, ground_truth_sql: str) -> float:
+ACCURACY_JUDGE_SYSTEM = """You are an evaluation judge for a Text-to-SQL system.
+Compare the result set of a generated SQL query against the ground truth result set and score their semantic equivalence.
+
+Score from 0.0 to 1.0:
+1.0 — Semantically identical (same values; ordering or column-name differences are fine)
+0.75 — Mostly equivalent: minor differences such as a rounding gap, one extra/missing row, or an extra metadata column
+0.5 — Partially correct: right structure but meaningful gaps (wrong aggregation, missing join, subset of rows)
+0.25 — Marginally related: correct shape but mostly wrong values or row count is far off
+0.0 — Completely wrong, one query errored, or results are unrelated
+
+Respond with ONLY a JSON object: {"score": <float>, "reason": "<one sentence>"}"""
+
+
+def _f1_score(gen_rows: list[dict], gt_rows: list[dict]) -> float:
+    """Row-level F1 using value-only normalisation (column-alias agnostic)."""
+    def normalize(rows: list[dict]) -> list[frozenset]:
+        return [frozenset(str(v) for v in row.values()) for row in rows]
+
+    gen_norm = normalize(gen_rows)
+    gt_norm  = normalize(gt_rows)
+
+    gt_pool = list(gt_norm)
+    matched = 0
+    for row in gen_norm:
+        if row in gt_pool:
+            gt_pool.remove(row)
+            matched += 1
+
+    precision = matched / len(gen_norm) if gen_norm else 0.0
+    recall    = matched / len(gt_norm)  if gt_norm  else 0.0
+    if precision + recall == 0:
+        return 0.0
+    return 2 * precision * recall / (precision + recall)
+
+
+def _llm_accuracy_judge(generated_sql: str, ground_truth_sql: str,
+                         gen_rows: list[dict], gt_rows: list[dict]) -> tuple[float, str | None]:
+    """LLM-as-judge fallback for borderline execution accuracy scores."""
+    import json, re
+
+    gen_preview = str(gen_rows[:10])
+    gt_preview  = str(gt_rows[:10])
+
+    response = client.messages.create(
+        model=MODEL_JUDGE,
+        max_tokens=150,
+        system=ACCURACY_JUDGE_SYSTEM,
+        messages=[{
+            "role": "user",
+            "content": (
+                f"Ground truth SQL:\n{ground_truth_sql}\n"
+                f"Ground truth result ({len(gt_rows)} rows, first 10):\n{gt_preview}\n\n"
+                f"Generated SQL:\n{generated_sql}\n"
+                f"Generated result ({len(gen_rows)} rows, first 10):\n{gen_preview}"
+            ),
+        }],
+    )
+
+    text = response.content[0].text.strip()
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        try:
+            parsed = json.loads(match.group())
+            return float(parsed["score"]), parsed.get("reason")
+        except Exception:
+            pass
+    return 0.0, None
+
+
+@track(project_name=OPIK_PROJECT_NAME)
+def execution_accuracy(generated_sql: str, ground_truth_sql: str) -> ExecutionAccuracyResult:
     """
-    Returns 1.0 if result sets match exactly, 0.0 otherwise.
-    Compares rows as frozensets to ignore ordering.
+    Primary: row-level F1 with value-only normalisation (column-alias agnostic).
+    Fallback: LLM-as-judge when the F1 score is below THRESHOLD_EXECUTION_ACCURACY.
     """
     gen_rows, gen_err = run_query(generated_sql)
-    gt_rows, gt_err = run_query(ground_truth_sql)
+    gt_rows,  gt_err  = run_query(ground_truth_sql)
+
+    result: ExecutionAccuracyResult = {
+        "score": 0.0,
+        "gen_rows": gen_rows,
+        "gt_rows": gt_rows,
+        "norm_gen_rows": None,
+        "norm_gt_rows": None,
+        "gen_error": gen_err,
+        "gt_error": gt_err,
+        "accu_judge_reason": None,
+    }
 
     if gen_err or gt_err:
-        return 0.0
-    if not gen_rows and not gt_rows:
-        return 1.0
+        return result  # hard failure: score stays 0.0, no judge needed
 
-    def normalize(rows: list[dict]) -> frozenset:
-        return frozenset(
-            frozenset((k, str(v)) for k, v in row.items())
-            for row in rows
+    if not gen_rows and not gt_rows:
+        result["score"] = 1.0
+        return result
+
+    score = _f1_score(gen_rows, gt_rows)
+    if score < THRESHOLD_EXECUTION_ACCURACY:
+        score, result["accu_judge_reason"] = _llm_accuracy_judge(
+            generated_sql, ground_truth_sql, gen_rows, gt_rows
         )
 
-    return 1.0 if normalize(gen_rows) == normalize(gt_rows) else 0.0
+    result["score"] = score
+    return result
 
 
 RELEVANCE_SYSTEM = """You are an evaluation judge for a Text-to-SQL system.
@@ -58,6 +156,7 @@ Score from 0.0 to 1.0:
 Respond with ONLY a JSON object: {"score": <float>, "reason": "<one sentence>"}"""
 
 
+@track(project_name=OPIK_PROJECT_NAME)
 def answer_relevance(question: str, generated_sql: str, query_result: list[dict]) -> float:
     """LLM-as-judge: scores how well the SQL + result addresses the user's intent."""
     result_preview = str(query_result[:5]) if query_result else "No results returned"
