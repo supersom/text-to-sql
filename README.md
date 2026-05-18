@@ -184,6 +184,14 @@ python dataset/generate_dataset.py
 
 Output: `dataset/golden_dataset.json`
 
+Then derive `needed_tables` for each entry (required for the `schema_recall` metric):
+
+```bash
+python dataset/derive_needed_tables.py
+```
+
+Use `--dry-run` to preview extracted tables without modifying the file. Re-run this whenever `golden_dataset.json` is regenerated.
+
 ### 7. Launch the Streamlit app
 
 ```bash
