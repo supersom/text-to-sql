@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scaled-Up Architecture — Text-to-SQL (50 Tables + Vector DB)</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      padding: 40px 24px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 1.15rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #94a3b8;
+      margin-bottom: 48px;
+    }
+
+    /* ── Layout columns ── */
+    .diagram {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      max-width: 980px;
+      margin: 0 auto;
+    }
+
+    /* ── Section labels ── */
+    .section-label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 4px 14px;
+      border-radius: 4px;
+      margin-bottom: 14px;
+      align-self: flex-start;
+    }
+
+    .label-offline  { background: #1e3a5f; color: #60a5fa; border: 1px solid #2563eb44; }
+    .label-online   { background: #1a3a2a; color: #4ade80; border: 1px solid #16a34a44; }
+    .label-eval     { background: #3b1f4a; color: #c084fc; border: 1px solid #9333ea44; }
+
+    /* ── Panels (dashed region) ── */
+    .panel {
+      width: 100%;
+      border-radius: 12px;
+      padding: 24px 28px;
+      margin-bottom: 8px;
+    }
+
+    .panel-offline {
+      border: 1.5px dashed #2563eb55;
+      background: #0d1b2e;
+    }
+
+    .panel-online {
+      border: 1.5px dashed #16a34a55;
+      background: #0d1f14;
+    }
+
+    .panel-eval {
+      border: 1.5px dashed #9333ea55;
+      background: #1a0d27;
+    }
+
+    /* ── Arrow connector ── */
+    .arrow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 4px 0;
+      gap: 0;
+    }
+
+    .arrow-line {
+      width: 2px;
+      background: #475569;
+      height: 28px;
+    }
+
+    .arrow-head {
+      width: 0;
+      height: 0;
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-top: 10px solid #475569;
+    }
+
+    .arrow-label {
+      font-size: 0.67rem;
+      color: #64748b;
+      margin-top: 3px;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Row of nodes ── */
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      width: 100%;
+      flex-wrap: wrap;
+    }
+
+    /* ── Node box ── */
+    .node {
+      border-radius: 10px;
+      padding: 14px 18px;
+      min-width: 140px;
+      max-width: 200px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .node-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .node-body {
+      font-size: 0.72rem;
+      color: #94a3b8;
+      line-height: 1.55;
+    }
+
+    .node-body em {
+      font-style: normal;
+      color: #cbd5e1;
+    }
+
+    /* Node colour themes */
+    .node-blue   { background: #1e3a5f; border: 1.5px solid #3b82f6; }
+    .node-blue   .node-title { color: #60a5fa; }
+
+    .node-teal   { background: #0f2d30; border: 1.5px solid #14b8a6; }
+    .node-teal   .node-title { color: #2dd4bf; }
+
+    .node-green  { background: #0f2d1a; border: 1.5px solid #22c55e; }
+    .node-green  .node-title { color: #4ade80; }
+
+    .node-amber  { background: #2d1f00; border: 1.5px solid #f59e0b; }
+    .node-amber  .node-title { color: #fbbf24; }
+
+    .node-red    { background: #2d0f0f; border: 1.5px solid #ef4444; }
+    .node-red    .node-title { color: #f87171; }
+
+    .node-purple { background: #1e1040; border: 1.5px solid #a855f7; }
+    .node-purple .node-title { color: #c084fc; }
+
+    .node-slate  { background: #1a2030; border: 1.5px solid #64748b; }
+    .node-slate  .node-title { color: #94a3b8; }
+
+    /* ── Horizontal arrow between nodes ── */
+    .h-arrow {
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+      padding: 0 6px;
+    }
+
+    .h-arrow-line {
+      height: 2px;
+      width: 36px;
+      background: #475569;
+    }
+
+    .h-arrow-head {
+      width: 0;
+      height: 0;
+      border-top: 6px solid transparent;
+      border-bottom: 6px solid transparent;
+      border-left: 9px solid #475569;
+    }
+
+    /* ── LangGraph box ── */
+    .langgraph-box {
+      border: 1.5px dashed #334155;
+      border-radius: 12px;
+      padding: 20px 20px 16px;
+      width: 100%;
+    }
+
+    .langgraph-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #64748b;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+
+    .langgraph-state {
+      font-size: 0.67rem;
+      color: #475569;
+      text-align: center;
+      margin-bottom: 18px;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* ── DB node (wide) ── */
+    .node-db {
+      min-width: 200px;
+      max-width: 240px;
+    }
+
+    /* ── Gate row ── */
+    .gate-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 16px;
+    }
+
+    .gate-chip {
+      font-size: 0.7rem;
+      padding: 5px 12px;
+      border-radius: 20px;
+      border: 1px solid;
+      white-space: nowrap;
+    }
+
+    .chip-pass  { border-color: #22c55e55; background: #0f2d1a; color: #4ade80; }
+    .chip-new   { border-color: #f59e0b55; background: #2d1f00; color: #fbbf24; }
+
+    /* ── Ship verdict ── */
+    .verdict-row {
+      display: flex;
+      gap: 24px;
+      justify-content: center;
+      margin-top: 20px;
+    }
+
+    .verdict {
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 8px 24px;
+      border-radius: 8px;
+      letter-spacing: 0.06em;
+    }
+
+    .verdict-ship   { background: #0f2d1a; border: 1.5px solid #22c55e; color: #4ade80; }
+    .verdict-noship { background: #2d0f0f; border: 1.5px solid #ef4444; color: #f87171; }
+
+    /* ── User query pill ── */
+    .user-query {
+      background: #1e293b;
+      border: 1.5px solid #475569;
+      border-radius: 24px;
+      padding: 10px 28px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #e2e8f0;
+      letter-spacing: 0.03em;
+      margin-bottom: 4px;
+    }
+
+    /* ── FK note ── */
+    .fk-note {
+      font-size: 0.68rem;
+      color: #475569;
+      font-style: italic;
+      text-align: center;
+      margin-top: 10px;
+    }
+
+    /* ── Design decisions table ── */
+    .decisions {
+      width: 100%;
+      max-width: 980px;
+      margin: 40px auto 0;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+
+    .decisions caption {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #64748b;
+      text-align: left;
+      padding-bottom: 10px;
+    }
+
+    .decisions th, .decisions td {
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid #1e293b;
+    }
+
+    .decisions th {
+      color: #64748b;
+      font-weight: 600;
+      font-size: 0.67rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      background: #0d111a;
+    }
+
+    .decisions td { color: #cbd5e1; }
+    .decisions tr:hover td { background: #0d111a; }
+
+    .decisions td:first-child { color: #60a5fa; font-weight: 600; }
+
+    /* responsive */
+    @media (max-width: 680px) {
+      .row { flex-direction: column; align-items: center; }
+      .h-arrow { transform: rotate(90deg); padding: 6px 0; }
+    }
+  </style>
+</head>
+<body>
+
+<h1>Scaled-Up Architecture &mdash; Text-to-SQL &nbsp;(~50 Tables + Vector DB Schema Retrieval)</h1>
+
+<div class="diagram">
+
+  <!-- ════════════════════════════════════════════ -->
+  <!--  OFFLINE: SCHEMA INGESTION                  -->
+  <!-- ════════════════════════════════════════════ -->
+  <div class="panel panel-offline" style="width:100%">
+    <div class="section-label label-offline">Offline &mdash; Schema Ingestion Pipeline (run once / on schema change)</div>
+
+    <div class="row">
+
+      <div class="node node-slate">
+        <div class="node-title">50 DB Tables</div>
+        <div class="node-body">DDL, column types,<br/>FK constraints,<br/>enum domains</div>
+      </div>
+
+      <div class="h-arrow"><div class="h-arrow-line"></div><div class="h-arrow-head"></div></div>
+
+      <div class="node node-blue">
+        <div class="node-title">Schema Chunker</div>
+        <div class="node-body">1 chunk per table:<br/><em>name + columns + types</em><br/>+ FKs + enums<br/>+ optional sample rows</div>
+      </div>
+
+      <div class="h-arrow"><div class="h-arrow-line"></div><div class="h-arrow-head"></div></div>
+
+      <div class="node node-teal">
+        <div class="node-title">Embedding Model</div>
+        <div class="node-body">e.g. <em>text-embedding-3-small</em><br/>or <em>voyage-3-large</em><br/><br/>vector per chunk</div>
+      </div>
+
+      <div class="h-arrow"><div class="h-arrow-line"></div><div class="h-arrow-head"></div></div>
+
+      <div class="node node-purple" style="min-width:160px">
+        <div class="node-title">Vector DB</div>
+        <div class="node-body">e.g. pgvector / Qdrant<br/>Chroma / Pinecone<br/><br/><em>doc_id | table_name</em><br/><em>schema_chunk | vector</em></div>
+      </div>
+
+    </div>
+
+    <p class="fk-note">Re-run ingestion on every schema migration &mdash; wire into CI alongside <code>alembic upgrade</code> or equivalent</p>
+  </div>
+
+  <!-- gap arrow -->
+  <div class="arrow">
+    <div class="arrow-line" style="height:32px"></div>
+    <div class="arrow-head"></div>
+    <div class="arrow-label">query time</div>
+  </div>
+
+  <!-- ════════════════════════════════════════════ -->
+  <!--  ONLINE: QUERY FLOW                         -->
+  <!-- ════════════════════════════════════════════ -->
+  <div class="panel panel-online" style="width:100%">
+    <div class="section-label label-online">Online &mdash; Query Path</div>
+
+    <!-- user query -->
+    <div style="display:flex; justify-content:center; margin-bottom:4px">
+      <div class="user-query">User Query</div>
+    </div>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+    <!-- retrieval step -->
+    <div class="row" style="margin-bottom:8px">
+      <div class="node node-teal" style="min-width:180px">
+        <div class="node-title">Query Embedder</div>
+        <div class="node-body">Same model as ingestion.<br/>Encodes user question<br/>→ query vector</div>
+      </div>
+
+      <div class="h-arrow"><div class="h-arrow-line"></div><div class="h-arrow-head"></div></div>
+
+      <div class="node node-purple" style="min-width:180px">
+        <div class="node-title">Vector Search</div>
+        <div class="node-body">Semantic nearest-neighbour<br/>top-k ≈ 8–10 chunks<br/><br/>+ FK stitching: auto-include<br/>any table a retrieved<br/>chunk references via FK</div>
+      </div>
+    </div>
+
+    <div class="arrow">
+      <div class="arrow-line"></div>
+      <div class="arrow-head"></div>
+      <div class="arrow-label">retrieved schema chunks (not all 50 tables)</div>
+    </div>
+
+    <!-- LangGraph -->
+    <div class="langgraph-box">
+      <div class="langgraph-label">LangGraph State Machine</div>
+      <div class="langgraph-state">AgentState &nbsp;+&nbsp; { retrieved_schema } &nbsp;&larr; injected after retrieval</div>
+
+      <div class="row">
+
+        <div class="node node-blue">
+          <div class="node-title">Schema Retrieval Node</div>
+          <div class="node-body"><em>(new)</em><br/>Embeds query, fetches<br/>top-k chunks from<br/>Vector DB, formats<br/>context string</div>
+        </div>
+
+        <div class="h-arrow"><div class="h-arrow-line"></div><div class="h-arrow-head"></div></div>
+
+        <div class="node node-green">
+          <div class="node-title">Planner Node</div>
+          <div class="node-body">Claude Sonnet<br/>(prompt cached)<br/><br/>Uses <em>retrieved schema</em><br/>only &mdash; not all 50 tables<br/><br/>&rarr; plan (text)</div>
+        </div>
+
+        <div class="h-arrow"><div class="h-arrow-line"></div><div class="h-arrow-head"></div></div>
+
+        <div class="node node-green">
+          <div class="node-title">SQL Generator Node</div>
+          <div class="node-body">Claude Sonnet<br/>(prompt cached)<br/><br/>Uses <em>retrieved schema</em><br/>only &mdash; not all 50 tables<br/><br/>&rarr; SQL string</div>
+        </div>
+
+        <div class="h-arrow"><div class="h-arrow-line"></div><div class="h-arrow-head"></div></div>
+
+        <div class="node node-amber">
+          <div class="node-title">Governance Node</div>
+          <div class="node-body">SELECT-only check<br/>Forbidden keyword scan<br/>Execute SQL<br/><br/>PASS &rarr; rows<br/>BLOCKED &rarr; error</div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+    <div style="display:flex; justify-content:center">
+      <div class="node node-slate node-db">
+        <div class="node-title">Database</div>
+        <div class="node-body">~50 tables<br/>PostgreSQL / SQLite<br/>(all data lives here;<br/>only relevant schema<br/>was retrieved above)</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- gap arrow -->
+  <div class="arrow">
+    <div class="arrow-line" style="height:32px"></div>
+    <div class="arrow-head"></div>
+    <div class="arrow-label">offline eval</div>
+  </div>
+
+  <!-- ════════════════════════════════════════════ -->
+  <!--  EVALUATION PIPELINE                        -->
+  <!-- ════════════════════════════════════════════ -->
+  <div class="panel panel-eval" style="width:100%">
+    <div class="section-label label-eval">Evaluation Pipeline (OPIK)</div>
+
+    <!-- Row 1: Golden Dataset -->
+    <div style="display:flex; justify-content:center; margin-bottom:4px">
+      <div class="node node-slate" style="min-width:200px; text-align:center">
+        <div class="node-title">Golden Dataset</div>
+        <div class="node-body">question &bull; ground_truth_sql<br/>needed_tables &bull; complexity / domain</div>
+      </div>
+    </div>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+    <!-- Row 2: Metrics -->
+    <div class="row" style="align-items:flex-start; gap:12px">
+
+      <div class="node node-purple" style="min-width:160px">
+        <div class="node-title">sql_validity</div>
+        <div class="node-body">Heuristic:<br/>Does generated SQL<br/>execute without error?<br/><br/>&rarr; bool</div>
+      </div>
+
+      <div class="node node-purple" style="min-width:160px">
+        <div class="node-title">execution_accuracy</div>
+        <div class="node-body">Heuristic:<br/>Result set of gen SQL<br/>== result set of<br/>ground truth SQL?<br/>(frozenset compare)<br/>&rarr; 0.0 &ndash; 1.0</div>
+      </div>
+
+      <div class="node node-purple" style="min-width:160px">
+        <div class="node-title">answer_relevance</div>
+        <div class="node-body">LLM-as-Judge<br/>(Claude Haiku)<br/><br/>Semantic match of<br/>SQL + result vs intent<br/>&rarr; 0.0 &ndash; 1.0</div>
+      </div>
+
+      <div class="node node-purple" style="min-width:160px">
+        <div class="node-title">schema_recall</div>
+        <div class="node-body">retrieved tables &cap;<br/>needed tables<br/>&divide; needed tables<br/><br/>Did vector search<br/>surface all required<br/>tables?<br/>&rarr; 0.0 &ndash; 1.0</div>
+      </div>
+
+    </div>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+    <!-- gate thresholds -->
+    <div style="text-align:center; font-size:0.68rem; color:#64748b; margin-bottom:10px; text-transform:uppercase; letter-spacing:0.08em">Launch Gate</div>
+    <div class="gate-row">
+      <div class="gate-chip chip-pass">sql_validity &ge; 0.95</div>
+      <div class="gate-chip chip-pass">execution_accuracy &ge; 0.80</div>
+      <div class="gate-chip chip-pass">answer_relevance &ge; 0.75</div>
+      <div class="gate-chip chip-pass">schema_recall &ge; 0.90</div>
+    </div>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+    <div class="verdict-row">
+      <div class="verdict verdict-ship">&#10003; SHIP</div>
+      <div class="verdict verdict-noship">&#10007; NO-SHIP</div>
+    </div>
+
+    <p style="text-align:center; font-size:0.67rem; color:#475569; margin-top:14px">All traces logged to OPIK &bull; results written to evaluation/results.json</p>
+  </div>
+
+</div>
+
+<!-- ── Design decisions table ── -->
+<table class="decisions">
+  <caption>Key Design Decisions</caption>
+  <thead>
+    <tr>
+      <th>Concern</th>
+      <th>Recommendation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Chunk granularity</td><td>One chunk per table (name + columns + FKs + enums). Never split a table's columns across chunks — a partial schema is worse than no schema.</td></tr>
+    <tr><td>Retrieval k</td><td>Start at 8–10 tables; tune down guided by schema_recall scores from the eval pipeline.</td></tr>
+    <tr><td>FK stitching</td><td>After retrieval, auto-include any table referenced by a FK in a retrieved chunk to prevent broken join chains.</td></tr>
+    <tr><td>Embedding model</td><td>Use the identical model for ingestion and query-time. A mismatch silently degrades recall with no visible error.</td></tr>
+    <tr><td>Prompt caching</td><td>Cache the retrieved schema slice (not a full 50-table dump) — keeps Anthropic prompt caching effective and cheap at scale.</td></tr>
+    <tr><td>Re-ingestion trigger</td><td>Run the ingestion pipeline on every schema migration. Wire it into CI alongside your migration tool (Alembic, Flyway, etc.).</td></tr>
+  </tbody>
+</table>
+
+</body>
+</html>
