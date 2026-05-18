@@ -74,26 +74,45 @@ Score from 0.0 to 1.0:
 Respond with ONLY a JSON object: {"score": <float>, "reason": "<one sentence>"}"""
 
 
+def _normalize_column_name(col: str) -> str:
+    """
+    Normalize column name for alias-aware comparison.
+    Converts to lowercase and removes underscores, hyphens, spaces.
+    E.g., 'total_high_risk_amount' → 'totalhighriskamount'
+    """
+    return re.sub(r'[_\-\s]+', '', col.lower())
+
+
 def _f1_score(gen_rows: list[dict], gt_rows: list[dict]) -> float:
-    """Row-level F1 using value-only normalisation (column-alias agnostic)."""
-    def normalize(rows: list[dict]) -> list[frozenset]:
-        return [frozenset(str(v) for v in row.values()) for row in rows]
+    """
+    Row-level F1 with column-name awareness and aliasing handling.
+    
+    Normalizes column names to catch semantic aliases (e.g., total_high_risk vs total-high-risk).
+    Compares rows by (normalized_column_name, value) pairs.
+    """
+    def normalize_row(row: dict) -> dict:
+        """Convert row: keys → normalized column names, values → strings."""
+        return {_normalize_column_name(k): str(v) for k, v in row.items()}
 
-    gen_norm = normalize(gen_rows)
-    gt_norm  = normalize(gt_rows)
+    gen_norm = [normalize_row(row) for row in gen_rows]
+    gt_norm = [normalize_row(row) for row in gt_rows]
 
+    # Match rows: ground truth pool with removals to avoid double-counting
     gt_pool = list(gt_norm)
     matched = 0
-    for row in gen_norm:
-        if row in gt_pool:
-            gt_pool.remove(row)
-            matched += 1
+    for gen_row in gen_norm:
+        # Find exact match in gt_pool (normalized columns + values)
+        for i, gt_row in enumerate(gt_pool):
+            if gen_row == gt_row:
+                gt_pool.pop(i)
+                matched += 1
+                break
 
     precision = matched / len(gen_norm) if gen_norm else 0.0
     recall    = matched / len(gt_norm)  if gt_norm  else 0.0
     if precision + recall == 0:
-        return 0.0
-    return 2 * precision * recall / (precision + recall)
+        return 0.0, gen_norm, gt_norm
+    return 2 * precision * recall / (precision + recall), gen_norm, gt_norm
 
 
 def _llm_accuracy_judge(generated_sql: str, ground_truth_sql: str,
@@ -154,7 +173,7 @@ def execution_accuracy(generated_sql: str, ground_truth_sql: str) -> ExecutionAc
         result["score"] = 1.0
         return result
 
-    score = _f1_score(gen_rows, gt_rows)
+    score, result["norm_gen_rows"], result["norm_gt_rows"] = _f1_score(gen_rows, gt_rows)
     if score < THRESHOLD_EXECUTION_ACCURACY:
         score, result["accu_judge_reason"] = _llm_accuracy_judge(
             generated_sql, ground_truth_sql, gen_rows, gt_rows
@@ -177,6 +196,8 @@ class ExecutionAccuracyMetric(base_metric.BaseMetric):
             metadata={
                 "gen_rows": result["gen_rows"],
                 "gt_rows": result["gt_rows"],
+                "norm_gen_rows": result["norm_gen_rows"],
+                "norm_gt_rows": result["norm_gt_rows"],
                 "gen_error": result["gen_error"],
                 "gt_error": result["gt_error"],
             },
