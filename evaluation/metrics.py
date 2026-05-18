@@ -186,3 +186,26 @@ def answer_relevance(question: str, generated_sql: str, query_result: list[dict]
         except Exception:
             pass
     return 0.0
+
+
+@track(project_name=OPIK_PROJECT_NAME)
+def schema_recall(generated_sql: str, needed_tables: list[str]) -> float:
+    """
+    Proxy metric (pre-vector-DB): extracts tables used in generated_sql and
+    measures coverage of needed_tables derived from ground_truth_sql.
+
+    Returns 1.0 when needed_tables is empty (nothing required → nothing missing).
+    When the vector DB retrieval layer is added, swap generated_sql for the
+    list of tables actually returned by the retriever.
+    """
+    if not needed_tables:
+        return 1.0
+
+    try:
+        parsed = sqlglot.parse_one(generated_sql, dialect="sqlite")
+        used = {t.name.lower() for t in parsed.find_all(exp.Table) if t.name}
+    except sqlglot.errors.ParseError:
+        return 0.0
+
+    needed = {t.lower() for t in needed_tables}
+    return len(used & needed) / len(needed)

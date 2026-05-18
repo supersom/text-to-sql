@@ -20,9 +20,10 @@ from config import (
     THRESHOLD_SQL_VALIDITY,
     THRESHOLD_EXECUTION_ACCURACY,
     THRESHOLD_ANSWER_RELEVANCE,
+    THRESHOLD_SCHEMA_RECALL,
 )
 from agents.graph import run_query_pipeline
-from evaluation.metrics import sql_validity, execution_accuracy, answer_relevance
+from evaluation.metrics import sql_validity, execution_accuracy, answer_relevance, schema_recall
 
 opik.configure(api_key=OPIK_API_KEY, use_local=False)
 opik_client = opik.Opik(project_name=OPIK_PROJECT_NAME)
@@ -45,6 +46,7 @@ def evaluate_single(entry: dict) -> dict:
     validity = sql_validity(gen_sql)
     exec_acc_result = execution_accuracy(gen_sql, ground_truth_sql)
     relevance = answer_relevance(question, gen_sql, query_result)
+    recall = schema_recall(gen_sql, entry.get("needed_tables", []))
 
     return {
         "id": entry["id"],
@@ -60,6 +62,7 @@ def evaluate_single(entry: dict) -> dict:
         "gen_error": exec_acc_result["gen_error"],
         "gt_error": exec_acc_result["gt_error"],
         "answer_relevance": relevance,
+        "schema_recall": recall,
         "complexity": entry.get("complexity"),
         "operations": entry.get("operations", []),
         "risk_level": entry.get("risk_level"),
@@ -73,11 +76,13 @@ def compute_gate(results: list[dict]) -> dict:
     validity_score = sum(r["sql_validity"] for r in results) / n
     accuracy_score = sum(r["execution_accuracy"] for r in results) / n
     relevance_score = sum(r["answer_relevance"] for r in results) / n
+    recall_score = sum(r["schema_recall"] for r in results) / n
 
     gate = {
         "sql_validity": {"score": round(validity_score, 4), "threshold": THRESHOLD_SQL_VALIDITY, "pass": validity_score >= THRESHOLD_SQL_VALIDITY},
         "execution_accuracy": {"score": round(accuracy_score, 4), "threshold": THRESHOLD_EXECUTION_ACCURACY, "pass": accuracy_score >= THRESHOLD_EXECUTION_ACCURACY},
         "answer_relevance": {"score": round(relevance_score, 4), "threshold": THRESHOLD_ANSWER_RELEVANCE, "pass": relevance_score >= THRESHOLD_ANSWER_RELEVANCE},
+        "schema_recall": {"score": round(recall_score, 4), "threshold": THRESHOLD_SCHEMA_RECALL, "pass": recall_score >= THRESHOLD_SCHEMA_RECALL},
     }
     gate["ship"] = all(v["pass"] for v in gate.values())
     return gate
@@ -105,7 +110,8 @@ def run_evaluation(max_entries: int | None = None) -> dict:
             validity_str = "PASS" if scored["sql_validity"] else "FAIL"
             acc_str = f"{scored['execution_accuracy']:.2f}"
             rel_str = f"{scored['answer_relevance']:.2f}"
-            print(f"    validity={validity_str} accuracy={acc_str} relevance={rel_str}")
+            rec_str = f"{scored['schema_recall']:.2f}"
+            print(f"    validity={validity_str} accuracy={acc_str} relevance={rel_str} recall={rec_str}")
         except Exception as e:
             print(f"    ERROR: {e}")
 
@@ -129,8 +135,8 @@ def _print_scorecard(gate: dict) -> None:
     print("\n" + "=" * 50)
     print("  LAUNCH GATE SCORECARD")
     print("=" * 50)
-    metrics = ["sql_validity", "execution_accuracy", "answer_relevance"]
-    labels = ["SQL Validity      ", "Execution Accuracy", "Answer Relevance  "]
+    metrics = ["sql_validity", "execution_accuracy", "answer_relevance", "schema_recall"]
+    labels = ["SQL Validity      ", "Execution Accuracy", "Answer Relevance  ", "Schema Recall     "]
     for m, label in zip(metrics, labels):
         g = gate[m]
         status = "PASS ✓" if g["pass"] else "FAIL ✗"
