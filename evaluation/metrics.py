@@ -219,8 +219,10 @@ Score from 0.0 to 1.0:
 Respond with ONLY a JSON object: {"score": <float>, "reason": "<one sentence>"}"""
 
 
-def answer_relevance(question: str, generated_sql: str, query_result: list[dict]) -> float:
-    """LLM-as-judge: scores how well the SQL + result addresses the user's intent."""
+def answer_relevance(
+    question: str, generated_sql: str, query_result: list[dict]
+) -> tuple[float, str | None]:
+    """LLM-as-judge: returns score and reason for how well SQL + result address intent."""
     result_preview = str(query_result[:5]) if query_result else "No results returned"
 
     response = client.messages.create(
@@ -241,10 +243,11 @@ def answer_relevance(question: str, generated_sql: str, query_result: list[dict]
     match = re.search(r'\{.*\}', text, re.DOTALL)
     if match:
         try:
-            return float(json.loads(match.group())["score"])
+            parsed = json.loads(match.group())
+            return float(parsed["score"]), parsed.get("reason")
         except Exception:
             pass
-    return 0.0
+    return 0.0, None
 
 
 class AnswerRelevanceMetric(base_metric.BaseMetric):
@@ -252,8 +255,12 @@ class AnswerRelevanceMetric(base_metric.BaseMetric):
         super().__init__(name="answer_relevance", project_name=OPIK_PROJECT_NAME)
 
     def score(self, question: str, output: str, query_result: list[dict], **kwargs: Any) -> score_result.ScoreResult:
-        value = answer_relevance(question, output, query_result)
-        return score_result.ScoreResult(name=self.name, value=value)
+        value, reason = answer_relevance(question, output, query_result)
+        return score_result.ScoreResult(
+            name=self.name,
+            value=value,
+            reason=reason,
+        )
 
 
 # ── 4. Schema Recall ─────────────────────────────────────────────────────────
