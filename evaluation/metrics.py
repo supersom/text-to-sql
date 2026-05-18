@@ -4,14 +4,19 @@ Evaluation metrics:
 2. execution_accuracy — F1 heuristic with LLM-as-judge fallback below threshold
 3. answer_relevance   — LLM-as-judge: does the answer semantically address intent?
 4. schema_recall      — heuristic: did the model use all tables required by the ground truth?
+
+Each metric is exposed both as a plain function (for unit tests / ad-hoc use)
+and as an opik BaseMetric subclass (for use with opik.evaluation.evaluate()).
 """
+import json
+import re
 import anthropic
 import sys
 from pathlib import Path
-from typing import TypedDict
-from opik import track
+from typing import Any, TypedDict
 import sqlglot
 import sqlglot.expressions as exp
+from opik.evaluation.metrics import base_metric, score_result
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import ANTHROPIC_API_KEY, MODEL_JUDGE, OPIK_PROJECT_NAME, THRESHOLD_EXECUTION_ACCURACY
@@ -19,13 +24,31 @@ from db.database import run_query
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-@track(project_name=OPIK_PROJECT_NAME)
+
+# ── 1. SQL Validity ──────────────────────────────────────────────────────────
+
 def sql_validity(sql: str) -> bool:
     """Returns True if the SQL executes without error."""
     if not sql or not sql.strip().upper().startswith("SELECT"):
         return False
     _, error = run_query(sql)
     return error is None
+
+
+class SqlValidityMetric(base_metric.BaseMetric):
+    def __init__(self) -> None:
+        super().__init__(name="sql_validity", project_name=OPIK_PROJECT_NAME)
+
+    def score(self, output: str, **kwargs: Any) -> score_result.ScoreResult:
+        value = float(sql_validity(output))
+        return score_result.ScoreResult(
+            name=self.name,
+            value=value,
+            reason="valid" if value else "SQL did not execute or is not a SELECT",
+        )
+
+
+# ── 2. Execution Accuracy ────────────────────────────────────────────────────
 
 class ExecutionAccuracyResult(TypedDict):
     score: float
@@ -36,6 +59,7 @@ class ExecutionAccuracyResult(TypedDict):
     gen_error: str | None
     gt_error: str | None
     accu_judge_reason: str | None
+
 
 ACCURACY_JUDGE_SYSTEM = """You are an evaluation judge for a Text-to-SQL system.
 Compare the result set of a generated SQL query against the ground truth result set and score their semantic equivalence.
@@ -75,8 +99,6 @@ def _f1_score(gen_rows: list[dict], gt_rows: list[dict]) -> float:
 def _llm_accuracy_judge(generated_sql: str, ground_truth_sql: str,
                          gen_rows: list[dict], gt_rows: list[dict]) -> tuple[float, str | None]:
     """LLM-as-judge fallback for borderline execution accuracy scores."""
-    import json, re
-
     gen_preview = str(gen_rows[:10])
     gt_preview  = str(gt_rows[:10])
 
@@ -106,7 +128,6 @@ def _llm_accuracy_judge(generated_sql: str, ground_truth_sql: str,
     return 0.0, None
 
 
-@track(project_name=OPIK_PROJECT_NAME)
 def execution_accuracy(generated_sql: str, ground_truth_sql: str) -> ExecutionAccuracyResult:
     """
     Primary: row-level F1 with value-only normalisation (column-alias agnostic).
@@ -143,6 +164,27 @@ def execution_accuracy(generated_sql: str, ground_truth_sql: str) -> ExecutionAc
     return result
 
 
+class ExecutionAccuracyMetric(base_metric.BaseMetric):
+    def __init__(self) -> None:
+        super().__init__(name="execution_accuracy", project_name=OPIK_PROJECT_NAME)
+
+    def score(self, output: str, ground_truth_sql: str, **kwargs: Any) -> score_result.ScoreResult:
+        result = execution_accuracy(output, ground_truth_sql)
+        return score_result.ScoreResult(
+            name=self.name,
+            value=result["score"],
+            reason=result["accu_judge_reason"],
+            metadata={
+                "gen_rows": result["gen_rows"],
+                "gt_rows": result["gt_rows"],
+                "gen_error": result["gen_error"],
+                "gt_error": result["gt_error"],
+            },
+        )
+
+
+# ── 3. Answer Relevance ──────────────────────────────────────────────────────
+
 RELEVANCE_SYSTEM = """You are an evaluation judge for a Text-to-SQL system.
 Score whether the generated SQL answer semantically addresses the user's question.
 
@@ -156,7 +198,6 @@ Score from 0.0 to 1.0:
 Respond with ONLY a JSON object: {"score": <float>, "reason": "<one sentence>"}"""
 
 
-@track(project_name=OPIK_PROJECT_NAME)
 def answer_relevance(question: str, generated_sql: str, query_result: list[dict]) -> float:
     """LLM-as-judge: scores how well the SQL + result addresses the user's intent."""
     result_preview = str(query_result[:5]) if query_result else "No results returned"
@@ -165,19 +206,16 @@ def answer_relevance(question: str, generated_sql: str, query_result: list[dict]
         model=MODEL_JUDGE,
         max_tokens=150,
         system=RELEVANCE_SYSTEM,
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    f"User question: {question}\n\n"
-                    f"Generated SQL:\n{generated_sql}\n\n"
-                    f"Query result (first 5 rows): {result_preview}"
-                ),
-            }
-        ],
+        messages=[{
+            "role": "user",
+            "content": (
+                f"User question: {question}\n\n"
+                f"Generated SQL:\n{generated_sql}\n\n"
+                f"Query result (first 5 rows): {result_preview}"
+            ),
+        }],
     )
 
-    import json, re
     text = response.content[0].text.strip()
     match = re.search(r'\{.*\}', text, re.DOTALL)
     if match:
@@ -188,7 +226,17 @@ def answer_relevance(question: str, generated_sql: str, query_result: list[dict]
     return 0.0
 
 
-@track(project_name=OPIK_PROJECT_NAME)
+class AnswerRelevanceMetric(base_metric.BaseMetric):
+    def __init__(self) -> None:
+        super().__init__(name="answer_relevance", project_name=OPIK_PROJECT_NAME)
+
+    def score(self, question: str, output: str, query_result: list[dict], **kwargs: Any) -> score_result.ScoreResult:
+        value = answer_relevance(question, output, query_result)
+        return score_result.ScoreResult(name=self.name, value=value)
+
+
+# ── 4. Schema Recall ─────────────────────────────────────────────────────────
+
 def schema_recall(generated_sql: str, needed_tables: list[str]) -> float:
     """
     Proxy metric (pre-vector-DB): extracts tables used in generated_sql and
@@ -209,3 +257,12 @@ def schema_recall(generated_sql: str, needed_tables: list[str]) -> float:
 
     needed = {t.lower() for t in needed_tables}
     return len(used & needed) / len(needed)
+
+
+class SchemaRecallMetric(base_metric.BaseMetric):
+    def __init__(self) -> None:
+        super().__init__(name="schema_recall", project_name=OPIK_PROJECT_NAME)
+
+    def score(self, output: str, needed_tables: list[str] | None = None, **kwargs: Any) -> score_result.ScoreResult:
+        value = schema_recall(output, needed_tables or [])
+        return score_result.ScoreResult(name=self.name, value=value)
