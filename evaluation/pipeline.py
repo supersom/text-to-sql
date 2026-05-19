@@ -17,6 +17,7 @@ from config import (
     OPIK_PROJECT_NAME,
     MODEL,
     MODEL_JUDGE,
+    TASK_THREADS,
     GOLDEN_DATASET_PATH,
     EVAL_RESULTS_PATH,
     THRESHOLD_SQL_VALIDITY,
@@ -159,7 +160,7 @@ def run_evaluation(max_entries: int | None = None) -> dict:
         experiment_config={"model": MODEL, "model_judge": MODEL_JUDGE},
         nb_samples=max_entries,
         verbose=1,
-        task_threads=2,
+        task_threads=int(TASK_THREADS),
     )
 
     gate = compute_gate(eval_result)

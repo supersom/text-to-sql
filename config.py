@@ -20,6 +20,7 @@ MODEL = os.getenv("MODEL", "claude-sonnet-4-6")
 MODEL_JUDGE = os.getenv("MODEL_JUDGE", "claude-haiku-4-5-20251001")
 
 VARIATIONS_PER_SEED = 6
+TASK_THREADS = int(os.getenv("TASK_THREADS", 2))
 LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", 4))
 LLM_MIN_INTERVAL = float(os.getenv("LLM_MIN_INTERVAL", 0.0))  # min seconds between calls; set >0 for rate-limited providers
 
