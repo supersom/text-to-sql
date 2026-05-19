@@ -178,6 +178,10 @@ with tab_eval:
         max_entries = _n_seeds
 
     if run_full or run_quick:
+        _eval_api_key = st.session_state.get("llm_api_key") or None if KEY_FROM_UI else None
+        if KEY_FROM_UI and not _eval_api_key:
+            st.warning("Please enter an API key in the sidebar before running an evaluation.")
+            st.stop()
         from evaluation.pipeline import run_evaluation
         golden_path = Path("dataset/golden_dataset.json")
         if not golden_path.exists():
@@ -188,7 +192,7 @@ with tab_eval:
         else:
             progress = st.progress(0, text="Starting evaluation...")
             with st.spinner("Evaluating... this may take a few minutes."):
-                output = run_evaluation(max_entries=max_entries)
+                output = run_evaluation(max_entries=max_entries, api_key=_eval_api_key)
             progress.progress(100, text="Done!")
             st.success("Evaluation complete! Results saved.")
 

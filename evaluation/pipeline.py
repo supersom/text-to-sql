@@ -39,15 +39,19 @@ opik_client = opik.Opik()
 DATASET_NAME = "text-to-sql-golden-dataset"
 
 
-def evaluation_task(dataset_item: dict) -> dict:
-    """Run one dataset item through the agent pipeline."""
-    result = run_query_pipeline(dataset_item["question"])
-    return {
-        "output": result.get("generated_sql", ""),
-        "governance_result": result.get("governance_result", ""),
-        "query_result": result.get("query_result", []),
-        "retrieved_tables": result.get("retrieved_tables", []),
-    }
+# opik.evaluate() calls task(dataset_item) — it controls the call site and expects that exact
+# signature. We can't add api_key as a parameter because opik would never pass it. The closure
+# captures api_key in scope while the inner function keeps the signature opik expects.
+def make_evaluation_task(api_key: str | None = None):
+    def evaluation_task(dataset_item: dict) -> dict:
+        result = run_query_pipeline(dataset_item["question"], api_key=api_key)
+        return {
+            "output": result.get("generated_sql", ""),
+            "governance_result": result.get("governance_result", ""),
+            "query_result": result.get("query_result", []),
+            "retrieved_tables": result.get("retrieved_tables", []),
+        }
+    return evaluation_task
 
 
 def sync_dataset(dataset_items: list[dict]) -> opik.Dataset:
@@ -133,7 +137,7 @@ def _build_results_json(eval_result: EvaluationResult) -> list[dict]:
     return rows
 
 
-def run_evaluation(max_entries: int | None = None) -> dict:
+def run_evaluation(max_entries: int | None = None, api_key: str | None = None) -> dict:
     if not GOLDEN_DATASET_PATH.exists():
         raise FileNotFoundError(
             f"Golden dataset not found at {GOLDEN_DATASET_PATH}. "
@@ -148,11 +152,11 @@ def run_evaluation(max_entries: int | None = None) -> dict:
 
     eval_result = evaluate(
         dataset=dataset,
-        task=evaluation_task,
+        task=make_evaluation_task(api_key=api_key),
         scoring_metrics=[
             SqlValidityMetric(),
-            ExecutionAccuracyMetric(),
-            AnswerRelevanceMetric(),
+            ExecutionAccuracyMetric(api_key=api_key),
+            AnswerRelevanceMetric(api_key=api_key),
             SchemaRecallMetric(),
         ],
         experiment_name_prefix="text-to-sql-eval",

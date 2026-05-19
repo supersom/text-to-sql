@@ -112,7 +112,8 @@ def _f1_score(gen_rows: list[dict], gt_rows: list[dict]) -> float:
 
 
 def _llm_accuracy_judge(generated_sql: str, ground_truth_sql: str,
-                         gen_rows: list[dict], gt_rows: list[dict]) -> tuple[float, str | None]:
+                         gen_rows: list[dict], gt_rows: list[dict],
+                         api_key: str | None = None) -> tuple[float, str | None]:
     """LLM-as-judge fallback for borderline execution accuracy scores."""
     gen_preview = str(gen_rows[:10])
     gt_preview  = str(gt_rows[:10])
@@ -123,7 +124,7 @@ def _llm_accuracy_judge(generated_sql: str, ground_truth_sql: str,
         f"Generated SQL:\n{generated_sql}\n"
         f"Generated result ({len(gen_rows)} rows, first 10):\n{gen_preview}"
     )
-    text = chat(MODEL_JUDGE, ACCURACY_JUDGE_SYSTEM, user_msg, max_tokens=150)
+    text = chat(MODEL_JUDGE, ACCURACY_JUDGE_SYSTEM, user_msg, max_tokens=150, api_key=api_key)
     match = re.search(r'\{.*\}', text, re.DOTALL)
     if match:
         try:
@@ -134,7 +135,7 @@ def _llm_accuracy_judge(generated_sql: str, ground_truth_sql: str,
     return 0.0, None
 
 
-def execution_accuracy(generated_sql: str, ground_truth_sql: str) -> ExecutionAccuracyResult:
+def execution_accuracy(generated_sql: str, ground_truth_sql: str, api_key: str | None = None) -> ExecutionAccuracyResult:
     """
     Primary: row-level F1 with value-only normalisation (column-alias agnostic).
     Fallback: LLM-as-judge when the F1 score is below THRESHOLD_EXECUTION_ACCURACY.
@@ -163,7 +164,7 @@ def execution_accuracy(generated_sql: str, ground_truth_sql: str) -> ExecutionAc
     score, result["norm_gen_rows"], result["norm_gt_rows"] = _f1_score(gen_rows, gt_rows)
     if score < THRESHOLD_EXECUTION_ACCURACY:
         score, result["accu_judge_reason"] = _llm_accuracy_judge(
-            generated_sql, ground_truth_sql, gen_rows, gt_rows
+            generated_sql, ground_truth_sql, gen_rows, gt_rows, api_key=api_key
         )
 
     result["score"] = score
@@ -171,11 +172,12 @@ def execution_accuracy(generated_sql: str, ground_truth_sql: str) -> ExecutionAc
 
 
 class ExecutionAccuracyMetric(base_metric.BaseMetric):
-    def __init__(self) -> None:
+    def __init__(self, api_key: str | None = None) -> None:
         super().__init__(name="execution_accuracy", project_name=OPIK_PROJECT_NAME)
+        self._api_key = api_key
 
     def score(self, output: str, ground_truth_sql: str, **kwargs: Any) -> score_result.ScoreResult:
-        result = execution_accuracy(output, ground_truth_sql)
+        result = execution_accuracy(output, ground_truth_sql, api_key=self._api_key)
         return score_result.ScoreResult(
             name=self.name,
             value=result["score"],
@@ -207,7 +209,8 @@ Respond with ONLY a JSON object: {"score": <float>, "reason": "<one sentence>"}"
 
 
 def answer_relevance(
-    question: str, generated_sql: str, query_result: list[dict]
+    question: str, generated_sql: str, query_result: list[dict],
+    api_key: str | None = None,
 ) -> tuple[float, str | None]:
     """LLM-as-judge: returns score and reason for how well SQL + result address intent."""
     result_preview = str(query_result[:5]) if query_result else "No results returned"
@@ -217,7 +220,7 @@ def answer_relevance(
         f"Generated SQL:\n{generated_sql}\n\n"
         f"Query result (first 5 rows): {result_preview}"
     )
-    text = chat(MODEL_JUDGE, RELEVANCE_SYSTEM, user_msg, max_tokens=150)
+    text = chat(MODEL_JUDGE, RELEVANCE_SYSTEM, user_msg, max_tokens=150, api_key=api_key)
     match = re.search(r'\{.*\}', text, re.DOTALL)
     if match:
         try:
@@ -229,11 +232,12 @@ def answer_relevance(
 
 
 class AnswerRelevanceMetric(base_metric.BaseMetric):
-    def __init__(self) -> None:
+    def __init__(self, api_key: str | None = None) -> None:
         super().__init__(name="answer_relevance", project_name=OPIK_PROJECT_NAME)
+        self._api_key = api_key
 
     def score(self, question: str, output: str, query_result: list[dict], **kwargs: Any) -> score_result.ScoreResult:
-        value, reason = answer_relevance(question, output, query_result)
+        value, reason = answer_relevance(question, output, query_result, api_key=self._api_key)
         return score_result.ScoreResult(
             name=self.name,
             value=value,
