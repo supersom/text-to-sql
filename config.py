@@ -10,7 +10,6 @@ SEED_QUERIES_PATH = BASE_DIR / "dataset" / "seed_queries.json"
 FEEDBACK_PATH = BASE_DIR / "dataset" / "feedback.json"
 EVAL_RESULTS_PATH = BASE_DIR / "evaluation" / "results.json"
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")  # kept for backward compat during migration
 LLM_API_KEY = os.getenv("LLM_API_KEY")
 
 OPIK_API_KEY = os.getenv("OPIK_API_KEY")
