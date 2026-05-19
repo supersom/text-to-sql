@@ -19,6 +19,11 @@ MODEL_JUDGE = "claude-haiku-4-5-20251001"
 
 VARIATIONS_PER_SEED = 6
 
+# Schema vector store
+VECTOR_DB_PATH = BASE_DIR / "data" / "schema_store"
+SCHEMA_RETRIEVAL_TOP_K = 5   # tables retrieved per query (out of 30); lower = more selective
+USE_SCHEMA_RETRIEVAL = True  # False → inject full schema (schema_recall trivially ~1.0)
+
 # Ship/no-ship thresholds
 THRESHOLD_SQL_VALIDITY = 0.90
 THRESHOLD_EXECUTION_ACCURACY = 0.70

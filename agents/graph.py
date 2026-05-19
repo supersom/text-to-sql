@@ -13,6 +13,8 @@ class AgentState(TypedDict):
     governance_result: str
     query_result: list[dict]
     answer: str
+    retrieved_schema: str        # schema string injected into planner + sql_generator
+    retrieved_tables: list[str]  # table names that were retrieved (or all tables if no retrieval)
 
 
 def build_graph() -> Any:
@@ -41,6 +43,8 @@ def run_query_pipeline(question: str) -> AgentState:
         "governance_result": "",
         "query_result": [],
         "answer": "",
+        "retrieved_schema": "",
+        "retrieved_tables": [],
     }
     return app.invoke(initial_state)
 
@@ -51,3 +55,4 @@ if __name__ == "__main__":
     print("\nSQL:", result["generated_sql"])
     print("\nGovernance:", result["governance_result"])
     print("\nRows:", result["query_result"])
+    print("\nRetrieved tables:", result["retrieved_tables"])

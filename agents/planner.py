@@ -3,17 +3,14 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import ANTHROPIC_API_KEY, MODEL
-from db.database import get_schema_str
+from config import ANTHROPIC_API_KEY, MODEL, USE_SCHEMA_RETRIEVAL
+from db.database import get_schema_str, get_all_table_names
+from db.schema_store import retrieve_schema
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-SCHEMA = get_schema_str()
 
-SYSTEM_PROMPT = f"""You are a SQL planning assistant for an insurance analytics platform.
-Given a natural language question, analyze it and produce a structured query plan.
-
-Database schema:
-{SCHEMA}
+_INSTRUCTIONS = """You are a SQL planning assistant for an insurance analytics platform.
+Given a natural language question and the relevant database schema, produce a structured query plan.
 
 Your plan must include:
 1. TABLES: which tables are needed
@@ -26,22 +23,23 @@ Be concise. Output plain text, not JSON or markdown."""
 
 
 def planner_node(state: dict) -> dict:
+    question = state["user_question"]
+
+    if USE_SCHEMA_RETRIEVAL:
+        schema, retrieved_tables = retrieve_schema(question)
+    else:
+        schema, retrieved_tables = get_schema_str(), get_all_table_names()
+
+    state["retrieved_schema"] = schema
+    state["retrieved_tables"] = retrieved_tables
+
+    system_prompt = f"{_INSTRUCTIONS}\n\nDatabase schema:\n{schema}"
+
     response = client.messages.create(
         model=MODEL,
         max_tokens=500,
-        system=[
-            {
-                "type": "text",
-                "text": SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[
-            {
-                "role": "user",
-                "content": f"Question: {state['user_question']}",
-            }
-        ],
+        system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": f"Question: {question}"}],
     )
     state["plan"] = response.content[0].text.strip()
     return state

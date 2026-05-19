@@ -106,5 +106,77 @@
     "operations": ["Join", "GroupBy", "Filter", "Subquery"],
     "risk_level": "Medium",
     "domain": "Insurance"
+  },
+  {
+    "id": "sq_013",
+    "question": "What is the total amount paid out via claim payments for approved claims?",
+    "ground_truth_sql": "SELECT SUM(cp.amount) as total_paid FROM claim_payments cp JOIN claims c ON cp.claim_id = c.claim_id WHERE c.status = 'Approved' AND cp.status = 'Cleared'",
+    "complexity": "Medium",
+    "operations": ["Join", "Filter"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_014",
+    "question": "Which underwriters have assessed policies rated Very High or High risk?",
+    "ground_truth_sql": "SELECT u.full_name, COUNT(r.assessment_id) as high_risk_count FROM risk_assessments r JOIN underwriters u ON r.underwriter_id = u.underwriter_id WHERE r.risk_category IN ('High', 'Very High') GROUP BY u.underwriter_id, u.full_name ORDER BY high_risk_count DESC",
+    "complexity": "Medium",
+    "operations": ["Join", "GroupBy", "Filter"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_015",
+    "question": "List active policies that include Comprehensive vehicle coverage",
+    "ground_truth_sql": "SELECT p.policy_id, p.policy_type, p.premium FROM policies p JOIN policy_coverages pc ON p.policy_id = pc.policy_id JOIN coverage_types ct ON pc.coverage_type_id = ct.coverage_type_id WHERE ct.name = 'Comprehensive' AND p.status = 'Active'",
+    "complexity": "Complex",
+    "operations": ["Join", "Filter"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_016",
+    "question": "Which approved repair vendors handled estimates for claims exceeding $20,000?",
+    "ground_truth_sql": "SELECT DISTINCT rv.name, rv.specialty, rv.region FROM repair_vendors rv JOIN repair_estimates re ON rv.vendor_id = re.vendor_id JOIN claims c ON re.claim_id = c.claim_id WHERE c.amount > 20000 AND rv.approved = 1",
+    "complexity": "Complex",
+    "operations": ["Join", "Filter"],
+    "risk_level": "Medium",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_017",
+    "question": "Rank agents by total commission earned across all periods",
+    "ground_truth_sql": "SELECT a.agent_id, SUM(ap.commission_earned) as total_commission FROM agents a JOIN agent_performance ap ON a.agent_id = ap.agent_id GROUP BY a.agent_id ORDER BY total_commission DESC",
+    "complexity": "Medium",
+    "operations": ["Join", "GroupBy"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_018",
+    "question": "Which fraud investigations resulted in confirmed fraud with savings over $10,000?",
+    "ground_truth_sql": "SELECT fi.investigation_id, fi.claim_id, fi.savings, i.specialization FROM fraud_investigations fi JOIN investigators i ON fi.investigator_id = i.investigator_id WHERE fi.confirmed_fraud = 1 AND fi.savings > 10000 ORDER BY fi.savings DESC",
+    "complexity": "Medium",
+    "operations": ["Join", "Filter"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_019",
+    "question": "What is the average reserve estimate amount for claims that are still open?",
+    "ground_truth_sql": "SELECT ROUND(AVG(re.reserve_amount), 2) as avg_reserve FROM reserve_estimates re JOIN claims c ON re.claim_id = c.claim_id WHERE c.status = 'Open' AND re.reserve_type = 'Case Reserve'",
+    "complexity": "Medium",
+    "operations": ["Join", "Filter"],
+    "risk_level": "Medium",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_020",
+    "question": "List insured properties that failed inspection, grouped by state",
+    "ground_truth_sql": "SELECT ip.address_state, COUNT(*) as failed_count FROM insured_properties ip JOIN inspection_reports ir ON ip.policy_id = ir.policy_id WHERE ir.passed = 0 GROUP BY ip.address_state ORDER BY failed_count DESC",
+    "complexity": "Medium",
+    "operations": ["Join", "GroupBy", "Filter"],
+    "risk_level": "High",
+    "domain": "Insurance"
   }
 ]

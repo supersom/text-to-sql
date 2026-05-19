@@ -5,16 +5,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import ANTHROPIC_API_KEY, MODEL
-from db.database import get_schema_str
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-SCHEMA = get_schema_str()
 
-SYSTEM_PROMPT = f"""You are a SQL generation assistant for an insurance analytics platform.
+_INSTRUCTIONS = """You are a SQL generation assistant for an insurance analytics platform.
 You will receive a query plan and must produce a single valid SQLite SELECT statement.
-
-Database schema:
-{SCHEMA}
 
 STRICT RULES:
 - Only generate SELECT statements. Never use DROP, DELETE, UPDATE, INSERT, ALTER, TRUNCATE, or CREATE.
@@ -34,26 +29,22 @@ def extract_sql(text: str) -> str:
 
 
 def sql_generator_node(state: dict) -> dict:
+    # Reuse the schema retrieved by the planner — no second vector lookup needed
+    schema = state.get("retrieved_schema", "")
+    system_prompt = f"{_INSTRUCTIONS}\n\nDatabase schema:\n{schema}"
+
     response = client.messages.create(
         model=MODEL,
         max_tokens=600,
-        system=[
-            {
-                "type": "text",
-                "text": SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    f"Original question: {state['user_question']}\n\n"
-                    f"Query plan:\n{state['plan']}\n\n"
-                    "Generate the SQLite SELECT query:"
-                ),
-            }
-        ],
+        system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
+        messages=[{
+            "role": "user",
+            "content": (
+                f"Original question: {state['user_question']}\n\n"
+                f"Query plan:\n{state['plan']}\n\n"
+                "Generate the SQLite SELECT query:"
+            ),
+        }],
     )
     state["generated_sql"] = extract_sql(response.content[0].text)
     return state
