@@ -14,8 +14,6 @@ import anthropic
 import sys
 from pathlib import Path
 from typing import Any, TypedDict
-import sqlglot
-import sqlglot.expressions as exp
 from opik.evaluation.metrics import base_metric, score_result
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -265,32 +263,31 @@ class AnswerRelevanceMetric(base_metric.BaseMetric):
 
 # ── 4. Schema Recall ─────────────────────────────────────────────────────────
 
-def schema_recall(generated_sql: str, needed_tables: list[str]) -> float:
+def schema_recall(retrieved_tables: list[str], needed_tables: list[str]) -> float:
     """
-    Proxy metric (pre-vector-DB): extracts tables used in generated_sql and
-    measures coverage of needed_tables derived from ground_truth_sql.
+    Measures retrieval coverage: what fraction of the tables required to answer
+    the question were actually returned by the vector store retriever.
 
     Returns 1.0 when needed_tables is empty (nothing required → nothing missing).
-    When the vector DB retrieval layer is added, swap generated_sql for the
-    list of tables actually returned by the retriever.
+    When USE_SCHEMA_RETRIEVAL=False all tables are passed as retrieved_tables,
+    so this metric is trivially 1.0 — which is the point of the comparison.
     """
     if not needed_tables:
         return 1.0
-
-    try:
-        parsed = sqlglot.parse_one(generated_sql, dialect="sqlite")
-        used = {t.name.lower() for t in parsed.find_all(exp.Table) if t.name}
-    except sqlglot.errors.ParseError:
-        return 0.0
-
+    retrieved = {t.lower() for t in retrieved_tables}
     needed = {t.lower() for t in needed_tables}
-    return len(used & needed) / len(needed)
+    return len(retrieved & needed) / len(needed)
 
 
 class SchemaRecallMetric(base_metric.BaseMetric):
     def __init__(self) -> None:
         super().__init__(name="schema_recall", project_name=OPIK_PROJECT_NAME)
 
-    def score(self, output: str, needed_tables: list[str] | None = None, **kwargs: Any) -> score_result.ScoreResult:
-        value = schema_recall(output, needed_tables or [])
+    def score(
+        self,
+        retrieved_tables: list[str] | None = None,
+        needed_tables: list[str] | None = None,
+        **kwargs: Any,
+    ) -> score_result.ScoreResult:
+        value = schema_recall(retrieved_tables or [], needed_tables or [])
         return score_result.ScoreResult(name=self.name, value=value)

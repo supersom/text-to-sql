@@ -56,7 +56,7 @@ def evaluate_single(entry: dict) -> dict:
     validity = sql_validity(gen_sql)
     exec_acc_result = execution_accuracy(gen_sql, ground_truth_sql)
     relevance, relevance_reason = answer_relevance(question, gen_sql, query_result)
-    recall = schema_recall(gen_sql, entry.get("needed_tables", []))
+    recall = schema_recall(result.get("retrieved_tables", []), entry.get("needed_tables", []))
 
     return {
         "id": entry["id"],

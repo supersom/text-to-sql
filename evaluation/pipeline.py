@@ -45,6 +45,7 @@ def evaluation_task(dataset_item: dict) -> dict:
         "output": result.get("generated_sql", ""),
         "governance_result": result.get("governance_result", ""),
         "query_result": result.get("query_result", []),
+        "retrieved_tables": result.get("retrieved_tables", []),
     }
 
 
@@ -111,6 +112,8 @@ def _build_results_json(eval_result: EvaluationResult) -> list[dict]:
             "ground_truth_sql": item.get("ground_truth_sql"),
             "generated_sql": task_out.get("output"),
             "governance_result": task_out.get("governance_result"),
+            "retrieved_tables": task_out.get("retrieved_tables", []),
+            "needed_tables": item.get("needed_tables", []),
             "sql_validity": score_map["sql_validity"].value if "sql_validity" in score_map else None,
             "execution_accuracy": exec_sr.value if exec_sr else None,
             "accu_judge_reason": exec_sr.reason if exec_sr else None,
@@ -156,6 +159,7 @@ def run_evaluation(max_entries: int | None = None) -> dict:
         experiment_config={"model": MODEL, "model_judge": MODEL_JUDGE},
         nb_samples=max_entries,
         verbose=1,
+        task_threads=2,
     )
 
     gate = compute_gate(eval_result)
