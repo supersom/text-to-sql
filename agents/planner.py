@@ -1,13 +1,11 @@
-import anthropic
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import ANTHROPIC_API_KEY, MODEL, USE_SCHEMA_RETRIEVAL
+from config import MODEL, USE_SCHEMA_RETRIEVAL
 from db.database import get_schema_str, get_all_table_names
 from db.schema_store import retrieve_schema
-
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+from agents.llm import chat
 
 _INSTRUCTIONS = """You are a SQL planning assistant for an insurance analytics platform.
 Given a natural language question and the relevant database schema, produce a structured query plan.
@@ -34,12 +32,5 @@ def planner_node(state: dict) -> dict:
     state["retrieved_tables"] = retrieved_tables
 
     system_prompt = f"{_INSTRUCTIONS}\n\nDatabase schema:\n{schema}"
-
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=500,
-        system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content": f"Question: {question}"}],
-    )
-    state["plan"] = response.content[0].text.strip()
+    state["plan"] = chat(MODEL, system_prompt, f"Question: {question}", max_tokens=500, cache_system=True)
     return state
