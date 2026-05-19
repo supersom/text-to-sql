@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import litellm
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, RetryCallState
-from config import LLM_API_KEY, MODEL, MODEL_JUDGE, LLM_MAX_RETRIES, LLM_MIN_INTERVAL
+from config import LLM_API_KEY, KEY_FROM_UI, MODEL, MODEL_JUDGE, LLM_MAX_RETRIES, LLM_MIN_INTERVAL
 
 _last_call: float = 0.0
 
@@ -63,7 +63,7 @@ def _wait(retry_state: RetryCallState) -> float:
     stop=stop_after_attempt(LLM_MAX_RETRIES + 1),
     reraise=True,
 )
-def chat(model: str, system: str, user: str, max_tokens: int, cache_system: bool = False) -> str:
+def chat(model: str, system: str, user: str, max_tokens: int, cache_system: bool = False, api_key: str | None = None) -> str:
     global _last_call
     if LLM_MIN_INTERVAL > 0:
         wait = LLM_MIN_INTERVAL - (time.monotonic() - _last_call)
@@ -78,7 +78,7 @@ def chat(model: str, system: str, user: str, max_tokens: int, cache_system: bool
     response = litellm.completion(
         model=model,
         max_tokens=max_tokens,
-        api_key=LLM_API_KEY,
+        api_key=api_key if KEY_FROM_UI else (api_key or LLM_API_KEY),
         messages=[
             {"role": "system", "content": system_content},
             {"role": "user", "content": user},

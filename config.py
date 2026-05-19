@@ -11,6 +11,7 @@ FEEDBACK_PATH = BASE_DIR / "dataset" / "feedback.json"
 EVAL_RESULTS_PATH = BASE_DIR / "evaluation" / "results.json"
 
 LLM_API_KEY = os.getenv("LLM_API_KEY")
+KEY_FROM_UI = os.getenv("KEY_FROM_UI", "0") == "1"
 
 OPIK_API_KEY = os.getenv("OPIK_API_KEY")
 OPIK_PROJECT_NAME = os.getenv("OPIK_PROJECT_NAME", "text-to-sql-analytics")

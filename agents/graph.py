@@ -15,6 +15,8 @@ class AgentState(TypedDict):
     answer: str
     retrieved_schema: str        # schema string injected into planner + sql_generator
     retrieved_tables: list[str]  # table names that were retrieved (or all tables if no retrieval)
+    llm_api_key: str             # runtime override; empty string means use config
+    model: str                   # runtime override; empty string means use config
 
 
 def build_graph() -> Any:
@@ -35,7 +37,11 @@ def build_graph() -> Any:
 app = build_graph()
 
 
-def run_query_pipeline(question: str) -> AgentState:
+def run_query_pipeline(
+    question: str,
+    api_key: str | None = None,
+    model: str | None = None,
+) -> AgentState:
     initial_state: AgentState = {
         "user_question": question,
         "plan": "",
@@ -45,6 +51,8 @@ def run_query_pipeline(question: str) -> AgentState:
         "answer": "",
         "retrieved_schema": "",
         "retrieved_tables": [],
+        "llm_api_key": api_key or "",
+        "model": model or "",
     }
     return app.invoke(initial_state)
 

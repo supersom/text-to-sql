@@ -32,5 +32,12 @@ def planner_node(state: dict) -> dict:
     state["retrieved_tables"] = retrieved_tables
 
     system_prompt = f"{_INSTRUCTIONS}\n\nDatabase schema:\n{schema}"
-    state["plan"] = chat(MODEL, system_prompt, f"Question: {question}", max_tokens=500, cache_system=True)
+    state["plan"] = chat(
+        state.get("model") or MODEL,
+        system_prompt,
+        f"Question: {question}",
+        max_tokens=500,
+        cache_system=True,
+        api_key=state.get("llm_api_key") or None,
+    )
     return state

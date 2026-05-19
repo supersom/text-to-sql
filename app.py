@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from config import FEEDBACK_PATH, EVAL_RESULTS_PATH, SEED_QUERIES_PATH
+from config import FEEDBACK_PATH, EVAL_RESULTS_PATH, SEED_QUERIES_PATH, KEY_FROM_UI, MODEL, MODEL_JUDGE
 from db.database import init_db, run_query
 from db.schema_store import build_schema_store, COLLECTION_NAME, _client
 from agents.graph import run_query_pipeline
@@ -69,6 +69,24 @@ with st.sidebar:
         if st.button(ex, key=f"ex_{ex[:20]}", use_container_width=True):
             st.session_state["question_input"] = ex
     st.markdown("---")
+
+    if KEY_FROM_UI:
+        st.markdown("**Configuration**")
+        _KEY_HELP = (
+            "API key for your chosen LLM provider.\n\n"
+            "**Where to get one:**\n"
+            "- **Anthropic** → console.anthropic.com/settings/keys\n"
+            "- **OpenAI** → platform.openai.com/api-keys\n"
+            "- **OpenRouter** → openrouter.ai/keys\n"
+            "- **HuggingFace** → huggingface.co/settings/tokens\n\n"
+            "Your key is never stored — this app is open source."
+        )
+        st.text_input("API Key", type="password", help=_KEY_HELP, placeholder="sk-...", key="llm_api_key")
+        st.text_input("Model", placeholder=MODEL, key="llm_model")
+        st.text_input("Judge Model", placeholder=MODEL_JUDGE, key="llm_model_judge")
+        st.caption("Your key is used only for this request and never saved.")
+        st.markdown("---")
+
     st.caption("Powered by LangGraph + ChromaDB + Opik")
 
 
@@ -91,8 +109,13 @@ with tab_query:
     run_button = run_col.button("Run Query", type="primary", use_container_width=True)
 
     if run_button and question.strip():
+        _api_key = st.session_state.get("llm_api_key") or None if KEY_FROM_UI else None
+        _model   = st.session_state.get("llm_model")   or None if KEY_FROM_UI else None
+        if KEY_FROM_UI and not _api_key:
+            st.warning("Please enter an API key in the sidebar before running a query.")
+            st.stop()
         with st.spinner("Running agent pipeline..."):
-            result = run_query_pipeline(question.strip())
+            result = run_query_pipeline(question.strip(), api_key=_api_key, model=_model)
 
         gov = result.get("governance_result", "")
         sql = result.get("generated_sql", "")

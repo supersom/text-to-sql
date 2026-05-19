@@ -35,6 +35,13 @@ def sql_generator_node(state: dict) -> dict:
         "Generate the SQLite SELECT query:"
     )
     state["generated_sql"] = extract_sql(
-        chat(MODEL, system_prompt, user_msg, max_tokens=600, cache_system=True)
+        chat(
+            state.get("model") or MODEL,
+            system_prompt,
+            user_msg,
+            max_tokens=600,
+            cache_system=True,
+            api_key=state.get("llm_api_key") or None,
+        )
     )
     return state
