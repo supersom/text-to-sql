@@ -1,12 +1,10 @@
 import re
-import anthropic
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import ANTHROPIC_API_KEY, MODEL
-
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+from config import MODEL
+from agents.llm import chat
 
 _INSTRUCTIONS = """You are a SQL generation assistant for an insurance analytics platform.
 You will receive a query plan and must produce a single valid SQLite SELECT statement.
@@ -29,22 +27,14 @@ def extract_sql(text: str) -> str:
 
 
 def sql_generator_node(state: dict) -> dict:
-    # Reuse the schema retrieved by the planner — no second vector lookup needed
     schema = state.get("retrieved_schema", "")
     system_prompt = f"{_INSTRUCTIONS}\n\nDatabase schema:\n{schema}"
-
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=600,
-        system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
-        messages=[{
-            "role": "user",
-            "content": (
-                f"Original question: {state['user_question']}\n\n"
-                f"Query plan:\n{state['plan']}\n\n"
-                "Generate the SQLite SELECT query:"
-            ),
-        }],
+    user_msg = (
+        f"Original question: {state['user_question']}\n\n"
+        f"Query plan:\n{state['plan']}\n\n"
+        "Generate the SQLite SELECT query:"
     )
-    state["generated_sql"] = extract_sql(response.content[0].text)
+    state["generated_sql"] = extract_sql(
+        chat(MODEL, system_prompt, user_msg, max_tokens=600, cache_system=True)
+    )
     return state
