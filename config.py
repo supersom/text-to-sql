@@ -10,12 +10,14 @@ SEED_QUERIES_PATH = BASE_DIR / "dataset" / "seed_queries.json"
 FEEDBACK_PATH = BASE_DIR / "dataset" / "feedback.json"
 EVAL_RESULTS_PATH = BASE_DIR / "evaluation" / "results.json"
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-OPIK_API_KEY = os.getenv("OPIK_API_KEY")
-OPIK_PROJECT_NAME = os.getenv("OPIK_PROJECT_NAME", "text-sql-clearspeed")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")  # kept for backward compat during migration
+LLM_API_KEY = os.getenv("LLM_API_KEY")
 
-MODEL = "claude-sonnet-4-6"
-MODEL_JUDGE = "claude-haiku-4-5-20251001"
+OPIK_API_KEY = os.getenv("OPIK_API_KEY")
+OPIK_PROJECT_NAME = os.getenv("OPIK_PROJECT_NAME", "text-to-sql-analytics")
+
+MODEL = os.getenv("MODEL", "claude-sonnet-4-6")
+MODEL_JUDGE = os.getenv("MODEL_JUDGE", "claude-haiku-4-5-20251001")
 
 VARIATIONS_PER_SEED = 6
 
