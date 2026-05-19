@@ -1,3 +1,14 @@
+---
+title: Text-to-SQL Insurance Analytics
+emoji: 🔍
+colorFrom: blue
+colorTo: purple
+sdk: streamlit
+sdk_version: "1.35.0"
+app_file: app.py
+pinned: false
+---
+
 # Text-to-SQL — NLP Query Interface
 
 A local, enterprise-grade Text-to-SQL application that translates natural language questions into executable SQL queries using Claude. Built with a LangGraph multi-agent pipeline, a golden dataset evaluation framework, and OPIK for experiment tracking.
@@ -156,7 +167,7 @@ cp .env.example .env
 Edit `.env` and fill in your keys:
 
 ```
-ANTHROPIC_API_KEY=sk-ant-...
+LLM_API_KEY=sk-ant-...        # API key for whichever provider MODEL points to
 OPIK_API_KEY=...
 OPIK_PROJECT_NAME=text_to_sql_pm_demo
 ```
