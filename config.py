@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).parent
 load_dotenv(BASE_DIR / ".env")
-DB_PATH = BASE_DIR / "data" / "clearspeed.db"
+DB_PATH = BASE_DIR / "data" / "insurance.db"
 GOLDEN_DATASET_PATH = BASE_DIR / "dataset" / "golden_dataset.json"
 SEED_QUERIES_PATH = BASE_DIR / "dataset" / "seed_queries.json"
 FEEDBACK_PATH = BASE_DIR / "dataset" / "feedback.json"
