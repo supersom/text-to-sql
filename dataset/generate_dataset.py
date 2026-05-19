@@ -9,17 +9,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import anthropic
 from config import (
-    ANTHROPIC_API_KEY,
     MODEL,
     SEED_QUERIES_PATH,
     GOLDEN_DATASET_PATH,
     VARIATIONS_PER_SEED,
 )
 from db.database import get_schema_str
-
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+from agents.llm import chat
 
 SCHEMA = get_schema_str()
 
@@ -54,20 +51,7 @@ Risk level: {seed['risk_level']}
 
 Return a JSON array of {n} objects with keys: question, ground_truth_sql, notes."""
 
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=2000,
-        system=[
-            {
-                "type": "text",
-                "text": SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    text = response.content[0].text.strip()
+    text = chat(MODEL, SYSTEM_PROMPT, prompt, max_tokens=2000, cache_system=True)
     if text.startswith("```"):
         text = text.split("```")[1]
         if text.startswith("json"):
