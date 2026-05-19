@@ -1,5 +1,5 @@
 """
-ClearSpeed Text-to-SQL — Streamlit UI
+Text-to-SQL — Streamlit UI
 Run: streamlit run app.py
 """
 import json
@@ -9,12 +9,12 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from config import FEEDBACK_PATH, EVAL_RESULTS_PATH
+from config import FEEDBACK_PATH, EVAL_RESULTS_PATH, SEED_QUERIES_PATH
 from db.database import init_db, run_query
 from agents.graph import run_query_pipeline
 
 st.set_page_config(
-    page_title="ClearSpeed Text-to-SQL",
+    page_title="Text-to-SQL",
     page_icon="🔍",
     layout="wide",
 )
@@ -44,7 +44,7 @@ def save_feedback(question: str, sql: str, result_count: int, thumbs_up: bool) -
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("ClearSpeed Analytics")
+    st.title("Text-to-SQL for Analytics")
     st.caption("NLP Query Interface — Text-to-SQL")
     st.markdown("---")
     st.markdown("**Quick examples:**")
@@ -58,9 +58,9 @@ with st.sidebar:
     ]
     for ex in examples:
         if st.button(ex, key=f"ex_{ex[:20]}", use_container_width=True):
-            st.session_state["prefill_question"] = ex
+            st.session_state["question_input"] = ex
     st.markdown("---")
-    st.caption("Powered by Claude + LangGraph")
+    st.caption("Powered by LangGraph + ChromaDB + Opik")
 
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
@@ -72,10 +72,8 @@ with tab_query:
     st.header("Ask a Business Question")
     st.caption("Natural language → SQL → Results. Governance blocks non-SELECT queries automatically.")
 
-    prefill = st.session_state.pop("prefill_question", "")
     question = st.text_input(
         "Your question",
-        value=prefill,
         placeholder="e.g. How many claims were filed last quarter?",
         key="question_input",
     )
@@ -138,12 +136,14 @@ with tab_eval:
 
     run_eval_col, quick_col, _ = st.columns([2, 2, 4])
 
+    _n_seeds = len(json.loads(SEED_QUERIES_PATH.read_text())) if SEED_QUERIES_PATH.exists() else 0
+
     run_full = run_eval_col.button("Run Full Evaluation", type="primary")
-    run_quick = quick_col.button("Quick Run (12 seeds)")
+    run_quick = quick_col.button(f"Quick Run ({_n_seeds} seeds)")
 
     max_entries = None
     if run_quick:
-        max_entries = 12
+        max_entries = _n_seeds
 
     if run_full or run_quick:
         from evaluation.pipeline import run_evaluation
@@ -195,6 +195,10 @@ with tab_eval:
         # Per-query results table
         st.subheader("Per-Query Results")
         df = pd.DataFrame(results)
+
+        if df.empty:
+            st.info("Evaluation produced no results. Re-run the evaluation.")
+            st.stop()
 
         # Filters
         fcol1, fcol2, fcol3 = st.columns(3)
