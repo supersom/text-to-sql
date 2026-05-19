@@ -11,6 +11,7 @@ import streamlit as st
 
 from config import FEEDBACK_PATH, EVAL_RESULTS_PATH, SEED_QUERIES_PATH
 from db.database import init_db, run_query
+from db.schema_store import build_schema_store, COLLECTION_NAME, _client
 from agents.graph import run_query_pipeline
 
 st.set_page_config(
@@ -19,12 +20,20 @@ st.set_page_config(
     layout="wide",
 )
 
-# Ensure DB is initialized on first run
+# Ensure DB and schema vector store are initialized on first run
 @st.cache_resource
 def ensure_db():
     init_db()
 
+@st.cache_resource
+def ensure_schema_store():
+    try:
+        _client().get_collection(COLLECTION_NAME)
+    except Exception:
+        build_schema_store()
+
 ensure_db()
+ensure_schema_store()
 
 
 def save_feedback(question: str, sql: str, result_count: int, thumbs_up: bool) -> None:
