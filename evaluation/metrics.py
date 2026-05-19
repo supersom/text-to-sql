@@ -10,17 +10,15 @@ and as an opik BaseMetric subclass (for use with opik.evaluation.evaluate()).
 """
 import json
 import re
-import anthropic
 import sys
 from pathlib import Path
 from typing import Any, TypedDict
 from opik.evaluation.metrics import base_metric, score_result
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import ANTHROPIC_API_KEY, MODEL_JUDGE, OPIK_PROJECT_NAME, THRESHOLD_EXECUTION_ACCURACY
+from config import MODEL_JUDGE, OPIK_PROJECT_NAME, THRESHOLD_EXECUTION_ACCURACY
 from db.database import run_query
-
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+from agents.llm import chat
 
 
 # ── 1. SQL Validity ──────────────────────────────────────────────────────────
@@ -119,22 +117,13 @@ def _llm_accuracy_judge(generated_sql: str, ground_truth_sql: str,
     gen_preview = str(gen_rows[:10])
     gt_preview  = str(gt_rows[:10])
 
-    response = client.messages.create(
-        model=MODEL_JUDGE,
-        max_tokens=150,
-        system=ACCURACY_JUDGE_SYSTEM,
-        messages=[{
-            "role": "user",
-            "content": (
-                f"Ground truth SQL:\n{ground_truth_sql}\n"
-                f"Ground truth result ({len(gt_rows)} rows, first 10):\n{gt_preview}\n\n"
-                f"Generated SQL:\n{generated_sql}\n"
-                f"Generated result ({len(gen_rows)} rows, first 10):\n{gen_preview}"
-            ),
-        }],
+    user_msg = (
+        f"Ground truth SQL:\n{ground_truth_sql}\n"
+        f"Ground truth result ({len(gt_rows)} rows, first 10):\n{gt_preview}\n\n"
+        f"Generated SQL:\n{generated_sql}\n"
+        f"Generated result ({len(gen_rows)} rows, first 10):\n{gen_preview}"
     )
-
-    text = response.content[0].text.strip()
+    text = chat(MODEL_JUDGE, ACCURACY_JUDGE_SYSTEM, user_msg, max_tokens=150)
     match = re.search(r'\{.*\}', text, re.DOTALL)
     if match:
         try:
@@ -223,21 +212,12 @@ def answer_relevance(
     """LLM-as-judge: returns score and reason for how well SQL + result address intent."""
     result_preview = str(query_result[:5]) if query_result else "No results returned"
 
-    response = client.messages.create(
-        model=MODEL_JUDGE,
-        max_tokens=150,
-        system=RELEVANCE_SYSTEM,
-        messages=[{
-            "role": "user",
-            "content": (
-                f"User question: {question}\n\n"
-                f"Generated SQL:\n{generated_sql}\n\n"
-                f"Query result (first 5 rows): {result_preview}"
-            ),
-        }],
+    user_msg = (
+        f"User question: {question}\n\n"
+        f"Generated SQL:\n{generated_sql}\n\n"
+        f"Query result (first 5 rows): {result_preview}"
     )
-
-    text = response.content[0].text.strip()
+    text = chat(MODEL_JUDGE, RELEVANCE_SYSTEM, user_msg, max_tokens=150)
     match = re.search(r'\{.*\}', text, re.DOTALL)
     if match:
         try:
