@@ -40,7 +40,7 @@ Respond with a JSON array only. Each item must have:
 """
 
 
-def generate_variations(seed: dict, n: int = VARIATIONS_PER_SEED) -> list[dict]:
+def generate_variations(seed: dict, n: int = VARIATIONS_PER_SEED, api_key: str | None = None) -> list[dict]:
     prompt = f"""Generate {n} variations of this question for our eval dataset.
 
 Original question: {seed['question']}
@@ -51,7 +51,7 @@ Risk level: {seed['risk_level']}
 
 Return a JSON array of {n} objects with keys: question, ground_truth_sql, notes."""
 
-    text = chat(MODEL, SYSTEM_PROMPT, prompt, max_tokens=2000, cache_system=True)
+    text = chat(MODEL, SYSTEM_PROMPT, prompt, max_tokens=2000, cache_system=True, api_key=api_key)
     if text.startswith("```"):
         text = text.split("```")[1]
         if text.startswith("json"):
@@ -61,7 +61,7 @@ Return a JSON array of {n} objects with keys: question, ground_truth_sql, notes.
     return json.loads(text)
 
 
-def build_golden_dataset() -> None:
+def build_golden_dataset(api_key: str | None = None) -> None:
     seeds = json.loads(SEED_QUERIES_PATH.read_text())
     golden = list(seeds)  # seeds are included as-is
 
@@ -70,7 +70,7 @@ def build_golden_dataset() -> None:
     for i, seed in enumerate(seeds, 1):
         print(f"  [{i}/{len(seeds)}] {seed['id']}: {seed['question'][:60]}...")
         try:
-            variations = generate_variations(seed)
+            variations = generate_variations(seed, api_key=api_key)
             for j, var in enumerate(variations):
                 entry = {
                     "id": f"{seed['id']}_v{j+1}",
