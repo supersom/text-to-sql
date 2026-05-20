@@ -52,7 +52,7 @@ def _chat_cli(backend: str, model: str, system: str, user: str) -> str:
     if backend == "claude-cli":
         cmd = ["claude", "-p", merged, "--model", model]
     elif backend == "gemini-cli":
-        cmd = ["gemini", "-p", merged]
+        cmd = ["gemini", "--skip-trust", "-p", merged]
     elif backend == "codex-cli":
         cmd = ["codex", "exec", merged]
     else:
