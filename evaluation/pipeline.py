@@ -137,7 +137,7 @@ def _build_results_json(eval_result: EvaluationResult) -> list[dict]:
     return rows
 
 
-def run_evaluation(max_entries: int | None = None, api_key: str | None = None, backend: str | None = None) -> dict:
+def run_evaluation(max_entries: int | None = None, api_key: str | None = None, backend: str | None = None, model_judge: str | None = None) -> dict:
     if not GOLDEN_DATASET_PATH.exists():
         raise FileNotFoundError(
             f"Golden dataset not found at {GOLDEN_DATASET_PATH}. "
@@ -155,8 +155,8 @@ def run_evaluation(max_entries: int | None = None, api_key: str | None = None, b
         task=make_evaluation_task(api_key=api_key, backend=backend),
         scoring_metrics=[
             SqlValidityMetric(),
-            ExecutionAccuracyMetric(api_key=api_key, backend=backend),
-            AnswerRelevanceMetric(api_key=api_key, backend=backend),
+            ExecutionAccuracyMetric(api_key=api_key, backend=backend, model_judge=model_judge),
+            AnswerRelevanceMetric(api_key=api_key, backend=backend, model_judge=model_judge),
             SchemaRecallMetric(),
         ],
         experiment_name_prefix="text-to-sql-eval",

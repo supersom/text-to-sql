@@ -197,8 +197,10 @@ with tab_eval:
         max_entries = _n_seeds
 
     if run_full or run_quick:
-        _eval_backend = st.session_state.get("llm_backend") or None
-        _eval_api_key = st.session_state.get("llm_api_key") or None if KEY_FROM_UI else None
+        _eval_backend    = st.session_state.get("llm_backend")    or None
+        _eval_api_key    = st.session_state.get("llm_api_key")    or None if KEY_FROM_UI else None
+        _eval_model      = st.session_state.get("llm_model")      or None if KEY_FROM_UI else None
+        _eval_model_judge = st.session_state.get("llm_model_judge") or None if KEY_FROM_UI else None
         if KEY_FROM_UI and _eval_backend == "api" and not _eval_api_key:
             st.warning("Please enter an API key in the sidebar before running an evaluation.")
             st.stop()
@@ -206,10 +208,10 @@ with tab_eval:
         from dataset.generate_dataset import build_golden_dataset
         if not GOLDEN_DATASET_PATH.exists():
             with st.spinner("Golden dataset not found — generating it now (this runs once)..."):
-                build_golden_dataset(api_key=_eval_api_key, backend=_eval_backend)
+                build_golden_dataset(api_key=_eval_api_key, backend=_eval_backend, model=_eval_model)
         progress = st.progress(0, text="Starting evaluation...")
         with st.spinner("Evaluating... this may take a few minutes."):
-            output = run_evaluation(max_entries=max_entries, api_key=_eval_api_key, backend=_eval_backend)
+            output = run_evaluation(max_entries=max_entries, api_key=_eval_api_key, backend=_eval_backend, model_judge=_eval_model_judge)
         progress.progress(100, text="Done!")
         st.success("Evaluation complete! Results saved.")
 
