@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from config import FEEDBACK_PATH, EVAL_RESULTS_PATH, SEED_QUERIES_PATH, KEY_FROM_UI, MODEL, MODEL_JUDGE
+from config import FEEDBACK_PATH, EVAL_RESULTS_PATH, SEED_QUERIES_PATH, GOLDEN_DATASET_PATH, KEY_FROM_UI, MODEL, MODEL_JUDGE
 from db.database import init_db, run_query
 from db.schema_store import build_schema_store, COLLECTION_NAME, _client
 from agents.graph import run_query_pipeline
@@ -183,18 +183,15 @@ with tab_eval:
             st.warning("Please enter an API key in the sidebar before running an evaluation.")
             st.stop()
         from evaluation.pipeline import run_evaluation
-        golden_path = Path("dataset/golden_dataset.json")
-        if not golden_path.exists():
-            st.error(
-                "Golden dataset not found. Run first:\n"
-                "```\npython dataset/generate_dataset.py\n```"
-            )
-        else:
-            progress = st.progress(0, text="Starting evaluation...")
-            with st.spinner("Evaluating... this may take a few minutes."):
-                output = run_evaluation(max_entries=max_entries, api_key=_eval_api_key)
-            progress.progress(100, text="Done!")
-            st.success("Evaluation complete! Results saved.")
+        from dataset.generate_dataset import build_golden_dataset
+        if not GOLDEN_DATASET_PATH.exists():
+            with st.spinner("Golden dataset not found — generating it now (this runs once)..."):
+                build_golden_dataset(api_key=_eval_api_key)
+        progress = st.progress(0, text="Starting evaluation...")
+        with st.spinner("Evaluating... this may take a few minutes."):
+            output = run_evaluation(max_entries=max_entries, api_key=_eval_api_key)
+        progress.progress(100, text="Done!")
+        st.success("Evaluation complete! Results saved.")
 
     # Load and display last results
     if EVAL_RESULTS_PATH.exists():
