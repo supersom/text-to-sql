@@ -17,6 +17,7 @@ class AgentState(TypedDict):
     retrieved_tables: list[str]  # table names that were retrieved (or all tables if no retrieval)
     llm_api_key: str             # runtime override; empty string means use config
     model: str                   # runtime override; empty string means use config
+    llm_backend: str             # runtime override; empty string means use config
 
 
 def build_graph() -> Any:
@@ -41,6 +42,7 @@ def run_query_pipeline(
     question: str,
     api_key: str | None = None,
     model: str | None = None,
+    backend: str | None = None,
 ) -> AgentState:
     initial_state: AgentState = {
         "user_question": question,
@@ -53,6 +55,7 @@ def run_query_pipeline(
         "retrieved_tables": [],
         "llm_api_key": api_key or "",
         "model": model or "",
+        "llm_backend": backend or "",
     }
     return app.invoke(initial_state)
 

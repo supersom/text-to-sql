@@ -18,6 +18,8 @@ OPIK_PROJECT_NAME = os.getenv("OPIK_PROJECT_NAME", "text-to-sql-analytics")
 
 MODEL = os.getenv("MODEL", "claude-sonnet-4-6")
 MODEL_JUDGE = os.getenv("MODEL_JUDGE", "claude-haiku-4-5-20251001")
+# "api" uses LiteLLM; "claude-cli" / "gemini-cli" / "codex-cli" shell out to installed CLIs
+LLM_BACKEND = os.getenv("LLM_BACKEND", "api")
 
 VARIATIONS_PER_SEED = 6
 TASK_THREADS = int(os.getenv("TASK_THREADS", 2))

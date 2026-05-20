@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from config import FEEDBACK_PATH, EVAL_RESULTS_PATH, SEED_QUERIES_PATH, GOLDEN_DATASET_PATH, KEY_FROM_UI, MODEL, MODEL_JUDGE
+from config import FEEDBACK_PATH, EVAL_RESULTS_PATH, SEED_QUERIES_PATH, GOLDEN_DATASET_PATH, KEY_FROM_UI, MODEL, MODEL_JUDGE, LLM_BACKEND
 from db.database import init_db, run_query
 from db.schema_store import build_schema_store, COLLECTION_NAME, _client
 from agents.graph import run_query_pipeline
@@ -70,22 +70,40 @@ with st.sidebar:
             st.session_state["question_input"] = ex
     st.markdown("---")
 
+    st.markdown("**Backend**")
+    _BACKEND_OPTIONS = ["api", "claude-cli", "gemini-cli", "codex-cli"]
+    _backend_default = _BACKEND_OPTIONS.index(LLM_BACKEND) if LLM_BACKEND in _BACKEND_OPTIONS else 0
+    st.selectbox(
+        "LLM Backend",
+        _BACKEND_OPTIONS,
+        index=_backend_default,
+        key="llm_backend",
+        help=(
+            "**api** — call the LLM provider via LiteLLM (requires an API key)\n\n"
+            "**claude-cli / gemini-cli / codex-cli** — shell out to an installed CLI; "
+            "auth is handled by the CLI's own credentials, no API key needed."
+        ),
+    )
+    st.markdown("---")
+
     if KEY_FROM_UI:
-        st.markdown("**Configuration**")
-        _KEY_HELP = (
-            "API key for your chosen LLM provider.\n\n"
-            "**Where to get one:**\n"
-            "- **Anthropic** → console.anthropic.com/settings/keys\n"
-            "- **OpenAI** → platform.openai.com/api-keys\n"
-            "- **OpenRouter** → openrouter.ai/keys\n"
-            "- **HuggingFace** → huggingface.co/settings/tokens\n\n"
-            "Your key is never stored — this app is open source."
-        )
-        st.text_input("API Key", type="password", help=_KEY_HELP, placeholder="sk-...", key="llm_api_key")
-        st.text_input("Model", placeholder=MODEL, key="llm_model")
-        st.text_input("Judge Model", placeholder=MODEL_JUDGE, key="llm_model_judge")
-        st.caption("Your key is used only for this request and never saved.")
-        st.markdown("---")
+        _selected_backend = st.session_state.get("llm_backend", LLM_BACKEND)
+        if _selected_backend == "api":
+            st.markdown("**Configuration**")
+            _KEY_HELP = (
+                "API key for your chosen LLM provider.\n\n"
+                "**Where to get one:**\n"
+                "- **Anthropic** → console.anthropic.com/settings/keys\n"
+                "- **OpenAI** → platform.openai.com/api-keys\n"
+                "- **OpenRouter** → openrouter.ai/keys\n"
+                "- **HuggingFace** → huggingface.co/settings/tokens\n\n"
+                "Your key is never stored — this app is open source."
+            )
+            st.text_input("API Key", type="password", help=_KEY_HELP, placeholder="sk-...", key="llm_api_key")
+            st.text_input("Model", placeholder=MODEL, key="llm_model")
+            st.text_input("Judge Model", placeholder=MODEL_JUDGE, key="llm_model_judge")
+            st.caption("Your key is used only for this request and never saved.")
+            st.markdown("---")
 
     st.caption("Powered by LangGraph + ChromaDB + Opik")
 
@@ -109,13 +127,14 @@ with tab_query:
     run_button = run_col.button("Run Query", type="primary", use_container_width=True)
 
     if run_button and question.strip():
+        _backend = st.session_state.get("llm_backend") or None
         _api_key = st.session_state.get("llm_api_key") or None if KEY_FROM_UI else None
         _model   = st.session_state.get("llm_model")   or None if KEY_FROM_UI else None
-        if KEY_FROM_UI and not _api_key:
+        if KEY_FROM_UI and _backend == "api" and not _api_key:
             st.warning("Please enter an API key in the sidebar before running a query.")
             st.stop()
         with st.spinner("Running agent pipeline..."):
-            result = run_query_pipeline(question.strip(), api_key=_api_key, model=_model)
+            result = run_query_pipeline(question.strip(), api_key=_api_key, model=_model, backend=_backend)
 
         gov = result.get("governance_result", "")
         sql = result.get("generated_sql", "")
@@ -178,18 +197,19 @@ with tab_eval:
         max_entries = _n_seeds
 
     if run_full or run_quick:
+        _eval_backend = st.session_state.get("llm_backend") or None
         _eval_api_key = st.session_state.get("llm_api_key") or None if KEY_FROM_UI else None
-        if KEY_FROM_UI and not _eval_api_key:
+        if KEY_FROM_UI and _eval_backend == "api" and not _eval_api_key:
             st.warning("Please enter an API key in the sidebar before running an evaluation.")
             st.stop()
         from evaluation.pipeline import run_evaluation
         from dataset.generate_dataset import build_golden_dataset
         if not GOLDEN_DATASET_PATH.exists():
             with st.spinner("Golden dataset not found — generating it now (this runs once)..."):
-                build_golden_dataset(api_key=_eval_api_key)
+                build_golden_dataset(api_key=_eval_api_key, backend=_eval_backend)
         progress = st.progress(0, text="Starting evaluation...")
         with st.spinner("Evaluating... this may take a few minutes."):
-            output = run_evaluation(max_entries=max_entries, api_key=_eval_api_key)
+            output = run_evaluation(max_entries=max_entries, api_key=_eval_api_key, backend=_eval_backend)
         progress.progress(100, text="Done!")
         st.success("Evaluation complete! Results saved.")
 

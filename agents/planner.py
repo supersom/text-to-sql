@@ -39,5 +39,6 @@ def planner_node(state: dict) -> dict:
         max_tokens=500,
         cache_system=True,
         api_key=state.get("llm_api_key") or None,
+        backend=state.get("llm_backend") or None,
     )
     return state
