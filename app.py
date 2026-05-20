@@ -70,21 +70,22 @@ with st.sidebar:
             st.session_state["question_input"] = ex
     st.markdown("---")
 
-    st.markdown("**Backend**")
-    _BACKEND_OPTIONS = ["api"] if KEY_FROM_UI else ["api", "claude-cli", "gemini-cli", "codex-cli"]
-    _backend_default = _BACKEND_OPTIONS.index(LLM_BACKEND) if LLM_BACKEND in _BACKEND_OPTIONS else 0
-    st.selectbox(
-        "LLM Backend",
-        _BACKEND_OPTIONS,
-        index=_backend_default,
-        key="llm_backend",
-        help=(
-            "**api** — call the LLM provider via LiteLLM (requires an API key)\n\n"
-            "**claude-cli / gemini-cli / codex-cli** — shell out to an installed CLI; "
-            "auth is handled by the CLI's own credentials, no API key needed."
-        ),
-    )
-    st.markdown("---")
+    if not KEY_FROM_UI:
+        st.markdown("**Backend**")
+        _BACKEND_OPTIONS = ["api", "claude-cli", "gemini-cli", "codex-cli"]
+        _backend_default = _BACKEND_OPTIONS.index(LLM_BACKEND) if LLM_BACKEND in _BACKEND_OPTIONS else 0
+        st.selectbox(
+            "LLM Backend",
+            _BACKEND_OPTIONS,
+            index=_backend_default,
+            key="llm_backend",
+            help=(
+                "**api** — call the LLM provider via LiteLLM (requires an API key)\n\n"
+                "**claude-cli / gemini-cli / codex-cli** — shell out to an installed CLI; "
+                "auth is handled by the CLI's own credentials, no API key needed."
+            ),
+        )
+        st.markdown("---")
 
     if KEY_FROM_UI:
         _selected_backend = st.session_state.get("llm_backend", LLM_BACKEND)
