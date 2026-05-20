@@ -71,7 +71,7 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown("**Backend**")
-    _BACKEND_OPTIONS = ["api", "claude-cli", "gemini-cli", "codex-cli"]
+    _BACKEND_OPTIONS = ["api"] if KEY_FROM_UI else ["api", "claude-cli", "gemini-cli", "codex-cli"]
     _backend_default = _BACKEND_OPTIONS.index(LLM_BACKEND) if LLM_BACKEND in _BACKEND_OPTIONS else 0
     st.selectbox(
         "LLM Backend",
@@ -128,6 +128,9 @@ with tab_query:
 
     if run_button and question.strip():
         _backend = st.session_state.get("llm_backend") or None
+        if KEY_FROM_UI and _backend not in (None, "api"):
+            st.error("CLI backends are not available in this deployment.")
+            st.stop()
         _api_key = st.session_state.get("llm_api_key") or None if KEY_FROM_UI else None
         _model   = st.session_state.get("llm_model")   or None if KEY_FROM_UI else None
         if KEY_FROM_UI and _backend == "api" and not _api_key:
@@ -198,6 +201,9 @@ with tab_eval:
 
     if run_full or run_quick:
         _eval_backend    = st.session_state.get("llm_backend")    or None
+        if KEY_FROM_UI and _eval_backend not in (None, "api"):
+            st.error("CLI backends are not available in this deployment.")
+            st.stop()
         _eval_api_key    = st.session_state.get("llm_api_key")    or None if KEY_FROM_UI else None
         _eval_model      = st.session_state.get("llm_model")      or None if KEY_FROM_UI else None
         _eval_model_judge = st.session_state.get("llm_model_judge") or None if KEY_FROM_UI else None
