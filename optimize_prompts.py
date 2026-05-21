@@ -261,7 +261,36 @@ def optimize_pipeline(
     save_path = output_dir / "pipeline.json"
     optimized.save(str(save_path))
     print(f"Saved → {save_path}")
+    extract_prompts(optimized, output_dir)
     return optimized
+
+
+def extract_prompts(pipeline: "TextToSQLPipeline", output_dir: Path) -> None:
+    """Write instructions + bootstrapped demos to extracted.json for chat() use."""
+    def _demos(predictor) -> list[dict]:
+        state = predictor.dump_state()
+        return [
+            {k: v for k, v in d.items() if k not in ("db_schema", "augmented", "reasoning")}
+            for d in state.get("demos", [])
+            if d.get("augmented")
+        ]
+
+    planner_pred = pipeline.planner.predict.predict
+    sql_gen_pred = pipeline.sql_gen.predict.predict
+
+    out = {
+        "planner": {
+            "instructions": planner_pred.signature.instructions,
+            "demos": _demos(planner_pred),
+        },
+        "sql_gen": {
+            "instructions": sql_gen_pred.signature.instructions,
+            "demos": _demos(sql_gen_pred),
+        },
+    }
+    path = output_dir / "extracted.json"
+    path.write_text(json.dumps(out, indent=2))
+    print(f"Extracted prompts → {path}")
 
 
 def optimize_judges(
