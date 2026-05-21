@@ -70,7 +70,7 @@ class PlanSignature(dspy.Signature):
     Only SELECT-oriented plans are valid."""
 
     question: str = dspy.InputField(desc="Natural language question about insurance data")
-    schema: str = dspy.InputField(desc="Relevant database schema")
+    db_schema: str = dspy.InputField(desc="Relevant database schema")
     plan: str = dspy.OutputField(
         desc="Structured query plan covering TABLES, JOINS, FILTERS, AGGREGATIONS, INTENT"
     )
@@ -89,7 +89,7 @@ class SQLGenSignature(dspy.Signature):
 
     question: str = dspy.InputField(desc="Original natural language question")
     plan: str = dspy.InputField(desc="Structured query plan from the planner")
-    schema: str = dspy.InputField(desc="Relevant database schema")
+    db_schema: str = dspy.InputField(desc="Relevant database schema")
     sql: str = dspy.OutputField(desc="Valid SQLite SELECT statement answering the question")
 
 
@@ -136,16 +136,16 @@ class PlannerModule(dspy.Module):
     def __init__(self):
         self.predict = dspy.ChainOfThought(PlanSignature)
 
-    def forward(self, question: str, schema: str) -> dspy.Prediction:
-        return self.predict(question=question, schema=schema)
+    def forward(self, question: str, db_schema: str) -> dspy.Prediction:
+        return self.predict(question=question, db_schema=db_schema)
 
 
 class SQLGeneratorModule(dspy.Module):
     def __init__(self):
         self.predict = dspy.ChainOfThought(SQLGenSignature)
 
-    def forward(self, question: str, plan: str, schema: str) -> dspy.Prediction:
-        return self.predict(question=question, plan=plan, schema=schema)
+    def forward(self, question: str, plan: str, db_schema: str) -> dspy.Prediction:
+        return self.predict(question=question, plan=plan, db_schema=db_schema)
 
 
 class TextToSQLPipeline(dspy.Module):
@@ -155,9 +155,9 @@ class TextToSQLPipeline(dspy.Module):
         self.planner = PlannerModule()
         self.sql_gen = SQLGeneratorModule()
 
-    def forward(self, question: str, schema: str) -> dspy.Prediction:
-        plan_pred = self.planner(question=question, schema=schema)
-        sql_pred = self.sql_gen(question=question, plan=plan_pred.plan, schema=schema)
+    def forward(self, question: str, db_schema: str) -> dspy.Prediction:
+        plan_pred = self.planner(question=question, db_schema=db_schema)
+        sql_pred = self.sql_gen(question=question, plan=plan_pred.plan, db_schema=db_schema)
         return dspy.Prediction(plan=plan_pred.plan, sql=sql_pred.sql)
 
 
@@ -201,9 +201,9 @@ def load_trainset(max_examples: int = 20) -> list[dspy.Example]:
         examples.append(
             dspy.Example(
                 question=question,
-                schema=schema,
+                db_schema=schema,
                 ground_truth_sql=item["ground_truth_sql"],
-            ).with_inputs("question", "schema")
+            ).with_inputs("question", "db_schema")
         )
 
     print(f"Loaded {len(examples)} training examples")
