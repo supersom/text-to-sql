@@ -248,6 +248,7 @@ def optimize_pipeline(
         optimizer = MIPROv2(
             metric=pipeline_metric,
             auto="light",
+            num_threads=1,   # serialize to avoid burst rate-limit failures
         )
         optimized = optimizer.compile(
             pipeline,
