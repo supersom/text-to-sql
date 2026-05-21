@@ -46,9 +46,15 @@ from evaluation.metrics import execution_accuracy
 
 # ── LM configuration ──────────────────────────────────────────────────────────
 
-def configure_lm(model: str = MODEL, api_key: str | None = None) -> None:
-    """Configure DSPy's global LM using LiteLLM (no custom wrapper needed)."""
-    lm = dspy.LM(f"anthropic/{model}", api_key=api_key)
+def configure_lm(model: str, api_key: str | None = None) -> None:
+    """Configure DSPy's global LM via LiteLLM.
+
+    `model` must be a full LiteLLM model string, e.g.:
+      anthropic/claude-sonnet-4-6
+      openai/gpt-4o
+      openrouter/google/gemini-2.5-pro
+    """
+    lm = dspy.LM(model, api_key=api_key)
     dspy.configure(lm=lm)
 
 
@@ -329,13 +335,29 @@ def main():
     parser = argparse.ArgumentParser(description="Optimize Text-to-SQL prompts with DSPy")
     parser.add_argument("--max-train", type=int, default=20, help="Max training examples (default 20)")
     parser.add_argument("--output-dir", type=Path, default=Path("optimized_prompts"))
-    parser.add_argument("--api-key", default=None, help="Anthropic API key (overrides env)")
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Full LiteLLM model string (e.g. anthropic/claude-sonnet-4-6, openai/gpt-4o). Prompted interactively if omitted.",
+    )
+    parser.add_argument("--api-key", default=None, help="API key for the chosen provider (overrides env)")
     parser.add_argument("--skip-judges", action="store_true", help="Skip judge prompt optimization")
     parser.add_argument(
         "--optimizer", choices=["mipro", "bootstrap"], default="mipro",
         help="mipro=MIPROv2 (better, slower); bootstrap=BootstrapFewShot (faster)"
     )
     args = parser.parse_args()
+
+    if args.model:
+        model = args.model
+    else:
+        _default = f"anthropic/{MODEL}"
+        _prompt = (
+            f"Model (LiteLLM format, e.g. anthropic/claude-sonnet-4-6, openai/gpt-4o,\n"
+            f"       openrouter/google/gemini-2.5-pro) [default: {_default}]: "
+        )
+        _answer = input(_prompt).strip()
+        model = _answer if _answer else _default
 
     args.output_dir.mkdir(exist_ok=True)
 
@@ -346,7 +368,7 @@ def main():
     except Exception:
         pass
 
-    configure_lm(api_key=args.api_key)
+    configure_lm(model=model, api_key=args.api_key)
 
     trainset = load_trainset(max_examples=args.max_train)
     if not trainset:
