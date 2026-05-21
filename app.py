@@ -3,6 +3,8 @@ Text-to-SQL — Streamlit UI
 Run: streamlit run app.py
 """
 import json
+import queue
+import threading
 import time
 from pathlib import Path
 
@@ -216,10 +218,54 @@ with tab_eval:
         if not GOLDEN_DATASET_PATH.exists():
             with st.spinner("Golden dataset not found — generating it now (this runs once)..."):
                 build_golden_dataset(api_key=_eval_api_key, backend=_eval_backend, model=_eval_model)
-        progress = st.progress(0, text="Starting evaluation...")
-        with st.spinner("Evaluating... this may take a few minutes."):
-            output = run_evaluation(max_entries=max_entries, api_key=_eval_api_key, backend=_eval_backend, model=_eval_model, model_judge=_eval_model_judge)
-        progress.progress(100, text="Done!")
+        _eval_total = max_entries or (
+            len(json.loads(GOLDEN_DATASET_PATH.read_text())) if GOLDEN_DATASET_PATH.exists() else 1
+        )
+        progress   = st.progress(0, text="Starting evaluation…")
+        status_txt = st.empty()
+
+        _progress_q: queue.Queue = queue.Queue()
+        _result: dict = {}
+        _exc: list = []
+
+        def _on_progress(done: int, total: int, question: str) -> None:
+            _progress_q.put((done, total, question))
+
+        def _run_eval() -> None:
+            try:
+                _result["output"] = run_evaluation(
+                    max_entries=max_entries,
+                    api_key=_eval_api_key,
+                    backend=_eval_backend,
+                    model=_eval_model,
+                    model_judge=_eval_model_judge,
+                    progress_callback=_on_progress,
+                )
+            except Exception as e:
+                _exc.append(e)
+            finally:
+                _progress_q.put(None)  # sentinel
+
+        _thread = threading.Thread(target=_run_eval, daemon=True)
+        _thread.start()
+
+        while True:
+            try:
+                item = _progress_q.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            if item is None:
+                break
+            done, total, question = item
+            progress.progress(done / total, text=f"Evaluating {done}/{total}")
+            status_txt.caption(f"↳ {question[:120]}")
+
+        _thread.join()
+        if _exc:
+            raise _exc[0]
+        output = _result["output"]
+        progress.progress(1.0, text="Done!")
+        status_txt.empty()
         st.success("Evaluation complete! Results saved.")
 
     # Load and display last results
