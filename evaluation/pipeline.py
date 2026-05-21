@@ -42,9 +42,9 @@ DATASET_NAME = "text-to-sql-golden-dataset"
 # opik.evaluate() calls task(dataset_item) — it controls the call site and expects that exact
 # signature. We can't add api_key as a parameter because opik would never pass it. The closure
 # captures api_key in scope while the inner function keeps the signature opik expects.
-def make_evaluation_task(api_key: str | None = None, backend: str | None = None):
+def make_evaluation_task(api_key: str | None = None, backend: str | None = None, model: str | None = None):
     def evaluation_task(dataset_item: dict) -> dict:
-        result = run_query_pipeline(dataset_item["question"], api_key=api_key, backend=backend)
+        result = run_query_pipeline(dataset_item["question"], api_key=api_key, backend=backend, model=model)
         return {
             "output": result.get("generated_sql", ""),
             "governance_result": result.get("governance_result", ""),
@@ -137,7 +137,7 @@ def _build_results_json(eval_result: EvaluationResult) -> list[dict]:
     return rows
 
 
-def run_evaluation(max_entries: int | None = None, api_key: str | None = None, backend: str | None = None, model_judge: str | None = None) -> dict:
+def run_evaluation(max_entries: int | None = None, api_key: str | None = None, backend: str | None = None, model: str | None = None, model_judge: str | None = None) -> dict:
     if not GOLDEN_DATASET_PATH.exists():
         raise FileNotFoundError(
             f"Golden dataset not found at {GOLDEN_DATASET_PATH}. "
@@ -152,7 +152,7 @@ def run_evaluation(max_entries: int | None = None, api_key: str | None = None, b
 
     eval_result = evaluate(
         dataset=dataset,
-        task=make_evaluation_task(api_key=api_key, backend=backend),
+        task=make_evaluation_task(api_key=api_key, backend=backend, model=model),
         scoring_metrics=[
             SqlValidityMetric(),
             ExecutionAccuracyMetric(api_key=api_key, backend=backend, model_judge=model_judge),
@@ -161,7 +161,7 @@ def run_evaluation(max_entries: int | None = None, api_key: str | None = None, b
         ],
         experiment_name_prefix="text-to-sql-eval",
         project_name=OPIK_PROJECT_NAME,
-        experiment_config={"model": MODEL, "model_judge": MODEL_JUDGE},
+        experiment_config={"model": model or MODEL, "model_judge": model_judge or MODEL_JUDGE},
         nb_samples=max_entries,
         verbose=1,
         task_threads=int(TASK_THREADS),

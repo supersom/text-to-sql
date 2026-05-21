@@ -218,7 +218,7 @@ with tab_eval:
                 build_golden_dataset(api_key=_eval_api_key, backend=_eval_backend, model=_eval_model)
         progress = st.progress(0, text="Starting evaluation...")
         with st.spinner("Evaluating... this may take a few minutes."):
-            output = run_evaluation(max_entries=max_entries, api_key=_eval_api_key, backend=_eval_backend, model_judge=_eval_model_judge)
+            output = run_evaluation(max_entries=max_entries, api_key=_eval_api_key, backend=_eval_backend, model=_eval_model, model_judge=_eval_model_judge)
         progress.progress(100, text="Done!")
         st.success("Evaluation complete! Results saved.")
 
