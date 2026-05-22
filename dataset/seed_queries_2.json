@@ -1,0 +1,317 @@
+[
+  {
+    "id": "sq_021",
+    "question": "How many claims are currently open, and what is their total dollar amount?",
+    "ground_truth_sql": "SELECT COUNT(*) as open_count, ROUND(SUM(amount), 2) as total_amount FROM claims WHERE status = 'Open'",
+    "complexity": "Simple",
+    "operations": ["Filter"],
+    "risk_level": "Medium",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_022",
+    "question": "Which adjuster has handled the most claims in the last 6 months?",
+    "ground_truth_sql": "SELECT a.name, COUNT(c.claim_id) as claim_count FROM claims c JOIN adjusters a ON c.adjuster_id = a.adjuster_id WHERE c.filed_date >= date('now', '-6 months') GROUP BY a.adjuster_id, a.name ORDER BY claim_count DESC LIMIT 1",
+    "complexity": "Medium",
+    "operations": ["Join", "GroupBy", "Filter"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_023",
+    "question": "What is the average time (in days) to resolve a claim, broken down by risk level?",
+    "ground_truth_sql": "SELECT risk_level, ROUND(AVG(julianday(resolved_date) - julianday(filed_date)), 1) as avg_days_to_resolve FROM claims WHERE resolved_date IS NOT NULL GROUP BY risk_level ORDER BY risk_level",
+    "complexity": "Medium",
+    "operations": ["GroupBy", "Filter"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_024",
+    "question": "List all high-risk claims that are still unresolved after 30 days.",
+    "ground_truth_sql": "SELECT claim_id, policy_id, adjuster_id, filed_date, amount, status FROM claims WHERE risk_level = 'High' AND status IN ('Open', 'Under Review') AND julianday('now') - julianday(filed_date) > 30 ORDER BY filed_date",
+    "complexity": "Medium",
+    "operations": ["Filter"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_025",
+    "question": "Which region has the highest average claim amount?",
+    "ground_truth_sql": "SELECT a.region, ROUND(AVG(c.amount), 2) as avg_claim_amount FROM claims c JOIN adjusters a ON c.adjuster_id = a.adjuster_id GROUP BY a.region ORDER BY avg_claim_amount DESC LIMIT 1",
+    "complexity": "Medium",
+    "operations": ["Join", "GroupBy"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_026",
+    "question": "What percentage of claims by department ended up denied?",
+    "ground_truth_sql": "SELECT a.department, ROUND(100.0 * SUM(CASE WHEN c.status = 'Denied' THEN 1 ELSE 0 END) / COUNT(*), 2) as denial_rate FROM claims c JOIN adjusters a ON c.adjuster_id = a.adjuster_id GROUP BY a.department ORDER BY denial_rate DESC",
+    "complexity": "Complex",
+    "operations": ["Join", "GroupBy"],
+    "risk_level": "Medium",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_027",
+    "question": "How many active policies are expiring in the next 90 days?",
+    "ground_truth_sql": "SELECT COUNT(*) as expiring_soon FROM policies WHERE status = 'Active' AND expiry_date BETWEEN date('now') AND date('now', '+90 days')",
+    "complexity": "Simple",
+    "operations": ["Filter"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_028",
+    "question": "What is the total premium revenue by policy type?",
+    "ground_truth_sql": "SELECT policy_type, ROUND(SUM(premium), 2) as total_premium FROM policies WHERE status = 'Active' GROUP BY policy_type ORDER BY total_premium DESC",
+    "complexity": "Simple",
+    "operations": ["GroupBy", "Filter"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_029",
+    "question": "Which policy holders have more than 3 claims filed?",
+    "ground_truth_sql": "SELECT p.holder_name, COUNT(c.claim_id) as claim_count FROM policies p JOIN claims c ON p.policy_id = c.policy_id GROUP BY p.policy_id, p.holder_name HAVING COUNT(c.claim_id) > 3 ORDER BY claim_count DESC",
+    "complexity": "Medium",
+    "operations": ["Join", "GroupBy", "Filter"],
+    "risk_level": "Medium",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_030",
+    "question": "How many policies are currently in \"Pending\" status per domain (Insurance, Banking, Public Sector)?",
+    "ground_truth_sql": "SELECT domain, COUNT(*) as pending_count FROM policies WHERE status = 'Pending' GROUP BY domain ORDER BY pending_count DESC",
+    "complexity": "Simple",
+    "operations": ["GroupBy", "Filter"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_031",
+    "question": "What is the average premium for active Health policies vs. Auto policies?",
+    "ground_truth_sql": "SELECT policy_type, ROUND(AVG(premium), 2) as avg_premium FROM policies WHERE status = 'Active' AND policy_type IN ('Health', 'Auto') GROUP BY policy_type",
+    "complexity": "Simple",
+    "operations": ["GroupBy", "Filter"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_032",
+    "question": "Which fraud flag type appears most frequently among unresolved flags?",
+    "ground_truth_sql": "SELECT flag_type, COUNT(*) as frequency FROM fraud_flags WHERE resolved = 0 GROUP BY flag_type ORDER BY frequency DESC LIMIT 1",
+    "complexity": "Simple",
+    "operations": ["GroupBy", "Filter"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_033",
+    "question": "How much total savings have been realized from resolved fraud flags?",
+    "ground_truth_sql": "SELECT ROUND(SUM(savings), 2) as total_savings, COUNT(*) as resolved_count FROM fraud_flags WHERE resolved = 1",
+    "complexity": "Simple",
+    "operations": ["Filter"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_034",
+    "question": "Which claims have both a fraud flag and an active fraud investigation?",
+    "ground_truth_sql": "SELECT DISTINCT c.claim_id, c.amount, c.status, c.risk_level FROM claims c JOIN fraud_flags ff ON c.claim_id = ff.claim_id JOIN fraud_investigations fi ON c.claim_id = fi.claim_id WHERE ff.resolved = 0 AND fi.closed_date IS NULL ORDER BY c.amount DESC",
+    "complexity": "Complex",
+    "operations": ["Join", "Filter"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_035",
+    "question": "Which investigators have the highest confirmed-fraud rate?",
+    "ground_truth_sql": "SELECT i.name, COUNT(fi.investigation_id) as total_investigations, SUM(fi.confirmed_fraud) as confirmed_count, ROUND(100.0 * SUM(fi.confirmed_fraud) / COUNT(fi.investigation_id), 2) as confirmed_rate FROM investigators i JOIN fraud_investigations fi ON i.investigator_id = fi.investigator_id WHERE fi.closed_date IS NOT NULL GROUP BY i.investigator_id, i.name HAVING COUNT(fi.investigation_id) >= 3 ORDER BY confirmed_rate DESC",
+    "complexity": "Complex",
+    "operations": ["Join", "GroupBy", "Filter"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_036",
+    "question": "Which states have the most claimants associated with fraud-flagged claims?",
+    "ground_truth_sql": "SELECT cl.state, COUNT(DISTINCT cl.claimant_id) as claimant_count FROM claimants cl JOIN claims c ON cl.claim_id = c.claim_id JOIN fraud_flags ff ON c.claim_id = ff.claim_id GROUP BY cl.state ORDER BY claimant_count DESC",
+    "complexity": "Complex",
+    "operations": ["Join", "GroupBy"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_037",
+    "question": "Which underwriters have assessed the most policies rated \"Very High\" risk?",
+    "ground_truth_sql": "SELECT u.full_name, COUNT(r.assessment_id) as very_high_count FROM risk_assessments r JOIN underwriters u ON r.underwriter_id = u.underwriter_id WHERE r.risk_category = 'Very High' GROUP BY u.underwriter_id, u.full_name ORDER BY very_high_count DESC",
+    "complexity": "Medium",
+    "operations": ["Join", "GroupBy", "Filter"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_038",
+    "question": "What is the distribution of risk categories across active policies?",
+    "ground_truth_sql": "SELECT r.risk_category, COUNT(*) as count, ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM risk_assessments ra JOIN policies p ON ra.policy_id = p.policy_id WHERE p.status = 'Active'), 2) as percentage FROM risk_assessments r JOIN policies p ON r.policy_id = p.policy_id WHERE p.status = 'Active' GROUP BY r.risk_category ORDER BY r.risk_category",
+    "complexity": "Complex",
+    "operations": ["Join", "GroupBy", "Filter", "Subquery"],
+    "risk_level": "Medium",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_039",
+    "question": "Which policies have a high risk assessment score but are still in Active status?",
+    "ground_truth_sql": "SELECT p.policy_id, p.holder_name, p.policy_type, r.risk_score, r.risk_category FROM policies p JOIN risk_assessments r ON p.policy_id = r.policy_id WHERE r.risk_category IN ('High', 'Very High') AND p.status = 'Active' ORDER BY r.risk_score DESC",
+    "complexity": "Medium",
+    "operations": ["Join", "Filter"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_040",
+    "question": "What is the average risk score by policy type?",
+    "ground_truth_sql": "SELECT p.policy_type, ROUND(AVG(r.risk_score), 2) as avg_risk_score FROM risk_assessments r JOIN policies p ON r.policy_id = p.policy_id GROUP BY p.policy_type ORDER BY avg_risk_score DESC",
+    "complexity": "Medium",
+    "operations": ["Join", "GroupBy"],
+    "risk_level": "Medium",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_041",
+    "question": "How many premium payments are currently overdue, and what is the total amount owed?",
+    "ground_truth_sql": "SELECT COUNT(*) as overdue_count, ROUND(SUM(amount), 2) as total_overdue FROM premium_payments WHERE status = 'Overdue'",
+    "complexity": "Simple",
+    "operations": ["Filter"],
+    "risk_level": "Medium",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_042",
+    "question": "What is the total claim payout amount issued per month over the past year?",
+    "ground_truth_sql": "SELECT strftime('%Y-%m', payment_date) as month, ROUND(SUM(amount), 2) as total_paid FROM claim_payments WHERE status IN ('Issued', 'Cleared') AND payment_date >= date('now', '-1 year') GROUP BY strftime('%Y-%m', payment_date) ORDER BY month",
+    "complexity": "Medium",
+    "operations": ["GroupBy", "Filter"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_043",
+    "question": "Which payment methods are most commonly used for premium payments?",
+    "ground_truth_sql": "SELECT payment_method, COUNT(*) as usage_count FROM premium_payments GROUP BY payment_method ORDER BY usage_count DESC",
+    "complexity": "Simple",
+    "operations": ["GroupBy"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_044",
+    "question": "Which claims have an approved repair estimate that exceeds the claim assessment's recommended payout?",
+    "ground_truth_sql": "SELECT c.claim_id, c.amount, re.approved_amount as repair_estimate, ca.recommended_payout, ROUND(re.approved_amount - ca.recommended_payout, 2) as overage FROM claims c JOIN repair_estimates re ON c.claim_id = re.claim_id JOIN claim_assessments ca ON c.claim_id = ca.claim_id WHERE re.approved = 1 AND re.approved_amount > ca.recommended_payout ORDER BY overage DESC",
+    "complexity": "Complex",
+    "operations": ["Join", "Filter"],
+    "risk_level": "Medium",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_045",
+    "question": "Which customers have the lowest credit scores and also have open high-risk claims?",
+    "ground_truth_sql": "SELECT cu.full_name, cu.credit_score, cu.state, c.claim_id, c.amount FROM customers cu JOIN policies p ON cu.full_name = p.holder_name JOIN claims c ON p.policy_id = c.policy_id WHERE c.status = 'Open' AND c.risk_level = 'High' ORDER BY cu.credit_score ASC LIMIT 10",
+    "complexity": "Complex",
+    "operations": ["Join", "Filter"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_046",
+    "question": "Who are the top 5 agents by total premium sold in the most recent quarter?",
+    "ground_truth_sql": "SELECT a.full_name, SUM(ap.total_premium) as total_premium FROM agents a JOIN agent_performance ap ON a.agent_id = ap.agent_id WHERE ap.period = (SELECT period FROM agent_performance ORDER BY period DESC LIMIT 1) GROUP BY a.agent_id, a.full_name ORDER BY total_premium DESC LIMIT 5",
+    "complexity": "Complex",
+    "operations": ["Join", "GroupBy", "Subquery"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_047",
+    "question": "Which agents have a commission rate above average and also exceeded their region's average policies sold?",
+    "ground_truth_sql": "WITH region_avg AS (SELECT a.region, AVG(ap.policies_sold) as avg_policies_sold FROM agents a JOIN agent_performance ap ON a.agent_id = ap.agent_id GROUP BY a.region), agent_totals AS (SELECT a.agent_id, a.full_name, a.region, a.commission_rate, AVG(ap.policies_sold) as agent_avg_sold FROM agents a JOIN agent_performance ap ON a.agent_id = ap.agent_id GROUP BY a.agent_id, a.full_name, a.region, a.commission_rate) SELECT at.full_name, at.region, at.commission_rate, ROUND(at.agent_avg_sold, 1) as avg_policies_sold FROM agent_totals at JOIN region_avg ra ON at.region = ra.region WHERE at.commission_rate > (SELECT AVG(commission_rate) FROM agents) AND at.agent_avg_sold > ra.avg_policies_sold ORDER BY at.agent_avg_sold DESC",
+    "complexity": "Complex",
+    "operations": ["Join", "GroupBy", "Subquery", "Filter"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_048",
+    "question": "Which customers have been with the company for over 10 years and have never filed a claim?",
+    "ground_truth_sql": "SELECT cu.full_name, cu.state, cu.customer_since FROM customers cu LEFT JOIN policies p ON cu.full_name = p.holder_name LEFT JOIN claims c ON p.policy_id = c.policy_id WHERE cu.customer_since <= date('now', '-10 years') GROUP BY cu.customer_id, cu.full_name, cu.state, cu.customer_since HAVING COUNT(c.claim_id) = 0 ORDER BY cu.customer_since",
+    "complexity": "Complex",
+    "operations": ["Join", "GroupBy", "Filter"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_049",
+    "question": "How many regulatory filings are currently pending or rejected, grouped by state?",
+    "ground_truth_sql": "SELECT state, status, COUNT(*) as filing_count FROM regulatory_filings WHERE status IN ('Pending', 'Rejected') GROUP BY state, status ORDER BY state, status",
+    "complexity": "Simple",
+    "operations": ["GroupBy", "Filter"],
+    "risk_level": "Medium",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_050",
+    "question": "Which compliance audits resulted in \"Unsatisfactory\" findings, and what were their scopes?",
+    "ground_truth_sql": "SELECT audit_id, audit_date, auditor_name, scope, findings FROM compliance_audits WHERE result = 'Unsatisfactory' ORDER BY audit_date DESC",
+    "complexity": "Simple",
+    "operations": ["Filter"],
+    "risk_level": "Medium",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_051",
+    "question": "For each claim that was appealed, what was the original adjuster's assessment vs. the final appeal decision?",
+    "ground_truth_sql": "SELECT c.claim_id, a.name as adjuster_name, ca.estimated_loss, ca.recommended_payout, ap.filed_date as appeal_filed, ap.reason, ap.decision FROM claims c JOIN adjusters a ON c.adjuster_id = a.adjuster_id JOIN claim_assessments ca ON c.claim_id = ca.claim_id JOIN claim_appeals ap ON c.claim_id = ap.claim_id ORDER BY c.claim_id",
+    "complexity": "Complex",
+    "operations": ["Join"],
+    "risk_level": "Medium",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_052",
+    "question": "Which policies have endorsements but no corresponding coverage records?",
+    "ground_truth_sql": "SELECT DISTINCT p.policy_id, p.holder_name, p.policy_type FROM policies p JOIN policy_endorsements pe ON p.policy_id = pe.policy_id WHERE p.policy_id NOT IN (SELECT policy_id FROM policy_coverages)",
+    "complexity": "Complex",
+    "operations": ["Join", "Subquery", "Filter"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_053",
+    "question": "What is the average reserve amount for claims with confirmed fraud vs. non-fraud claims?",
+    "ground_truth_sql": "SELECT CASE WHEN fi.confirmed_fraud = 1 THEN 'Confirmed Fraud' ELSE 'No Confirmed Fraud' END as fraud_status, ROUND(AVG(re.reserve_amount), 2) as avg_reserve FROM reserve_estimates re JOIN claims c ON re.claim_id = c.claim_id LEFT JOIN fraud_investigations fi ON c.claim_id = fi.claim_id GROUP BY CASE WHEN fi.confirmed_fraud = 1 THEN 'Confirmed Fraud' ELSE 'No Confirmed Fraud' END",
+    "complexity": "Complex",
+    "operations": ["Join", "GroupBy"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_054",
+    "question": "Which repair vendors have approved estimates on claims that also have fraud flags?",
+    "ground_truth_sql": "SELECT DISTINCT rv.name, rv.specialty, rv.region FROM repair_vendors rv JOIN repair_estimates re ON rv.vendor_id = re.vendor_id JOIN fraud_flags ff ON re.claim_id = ff.claim_id WHERE re.approved = 1 ORDER BY rv.name",
+    "complexity": "Complex",
+    "operations": ["Join", "Filter"],
+    "risk_level": "High",
+    "domain": "Insurance"
+  },
+  {
+    "id": "sq_055",
+    "question": "For properties built before 1980, what is the average claim amount and how many such claims exist?",
+    "ground_truth_sql": "SELECT ROUND(AVG(c.amount), 2) as avg_claim_amount, COUNT(c.claim_id) as claim_count FROM insured_properties ip JOIN policies p ON ip.policy_id = p.policy_id JOIN claims c ON p.policy_id = c.policy_id WHERE ip.year_built < 1980",
+    "complexity": "Complex",
+    "operations": ["Join", "Filter"],
+    "risk_level": "Low",
+    "domain": "Insurance"
+  }
+]
