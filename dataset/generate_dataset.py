@@ -61,8 +61,11 @@ Return a JSON array of {n} objects with keys: question, ground_truth_sql, notes.
     return json.loads(text)
 
 
-def build_golden_dataset(api_key: str | None = None, backend: str | None = None, model: str | None = None) -> None:
-    seeds = json.loads(SEED_QUERIES_PATH.read_text())
+def build_golden_dataset(api_key: str | None = None, backend: str | None = None, model: str | None = None, seed_path: Path | None = None, output_path: Path | None = None) -> None:
+    seed_path = seed_path or SEED_QUERIES_PATH
+    output_path = output_path or GOLDEN_DATASET_PATH
+
+    seeds = json.loads(seed_path.read_text())
     golden = list(seeds)  # seeds are included as-is
 
     print(f"Expanding {len(seeds)} seed queries with {VARIATIONS_PER_SEED} variations each...")
@@ -87,9 +90,16 @@ def build_golden_dataset(api_key: str | None = None, backend: str | None = None,
         except Exception as e:
             print(f"    Warning: failed to generate variations for {seed['id']}: {e}")
 
-    GOLDEN_DATASET_PATH.write_text(json.dumps(golden, indent=2))
-    print(f"\nDone. Golden dataset: {len(golden)} entries → {GOLDEN_DATASET_PATH}")
+    output_path.write_text(json.dumps(golden, indent=2))
+    print(f"\nDone. Golden dataset: {len(golden)} entries → {output_path}")
 
 
 if __name__ == "__main__":
-    build_golden_dataset()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--seed", type=Path, default=None, help="Path to seed queries JSON")
+    parser.add_argument("--output", type=Path, default=None, help="Path to write golden dataset JSON")
+    parser.add_argument("--backend", default=None, help="LLM backend (api, claude-cli, gemini-cli, codex-cli)")
+    parser.add_argument("--model", default=None, help="Model string override")
+    args = parser.parse_args()
+    build_golden_dataset(backend=args.backend, model=args.model, seed_path=args.seed, output_path=args.output)
