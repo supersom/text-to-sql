@@ -1,3 +1,4 @@
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -38,188 +39,94 @@ def run_query(sql: str) -> tuple[list[dict], str | None]:
 
 
 # ── Per-table schema chunks ──────────────────────────────────────────────────
-# Each entry is the authoritative description for one table.
-# get_schema_str() concatenates these; schema_store.py embeds them individually.
+# Parsed from db/schema.sql at import time — schema.sql is the single source of truth.
+# Compact column signatures are auto-generated; inline SQL comments become annotation
+# lines; -- @desc comments above each CREATE TABLE become the purpose sentence.
 
-_TABLE_CHUNKS: dict[str, str] = {
-    "adjusters": (
-        "adjusters(adjuster_id PK, name, region, department)\n"
-        "  region: 'Northeast'|'Southeast'|'Midwest'|'West'\n"
-        "  department: 'Auto'|'Property'|'Health'|'Liability'\n"
-        "  Stores insurance claims adjusters and their regional/department assignments."
-    ),
-    "policies": (
-        "policies(policy_id PK, holder_name, domain, policy_type, effective_date DATE, expiry_date DATE, premium REAL, status)\n"
-        "  domain: 'Insurance'|'Banking'|'Public Sector'\n"
-        "  policy_type: 'Auto'|'Property'|'Health'|'Liability'\n"
-        "  status: 'Active'|'Expired'|'Cancelled'|'Pending'\n"
-        "  Master policy records: who is covered, what type, dates, and premium amount."
-    ),
-    "claims": (
-        "claims(claim_id PK, policy_id FK→policies, adjuster_id FK→adjusters, "
-        "filed_date DATE, resolved_date DATE nullable, amount REAL, status, risk_level)\n"
-        "  status: 'Open'|'Approved'|'Denied'|'Under Review'\n"
-        "  risk_level: 'Low'|'Medium'|'High'\n"
-        "  Core claims table: every insurance claim filed, its amount, status, and risk level."
-    ),
-    "claimants": (
-        "claimants(claimant_id PK, claim_id FK→claims, full_name, contact_email, state)\n"
-        "  state: 2-letter US state code\n"
-        "  Individuals who filed claims; one claimant per claim."
-    ),
-    "fraud_flags": (
-        "fraud_flags(flag_id PK, claim_id FK→claims, flag_type, flagged_at DATE, resolved INTEGER 0/1, savings REAL)\n"
-        "  flag_type: 'Duplicate'|'Inflated Amount'|'Staged Incident'|'Identity Mismatch'\n"
-        "  resolved: 0=open, 1=resolved; savings: estimated fraud savings in USD\n"
-        "  Heuristic fraud signals raised against claims; tracks resolution and savings."
-    ),
-    "coverage_types": (
-        "coverage_types(coverage_type_id PK, name, category, description)\n"
-        "  category: 'Vehicle'|'Property'|'Health'|'Liability'\n"
-        "  name examples: 'Collision'|'Comprehensive'|'Bodily Injury Liability'|'Building Coverage'\n"
-        "  Reference table of available insurance coverage types."
-    ),
-    "loss_types": (
-        "loss_types(loss_type_id PK, name, category)\n"
-        "  category: 'Vehicle'|'Property'|'Health'|'Liability'|'Fraud'\n"
-        "  name examples: 'Vehicle Collision'|'Fire Damage'|'Water Damage'|'Theft'|'Medical Injury'\n"
-        "  Reference table classifying the nature of insured losses."
-    ),
-    "customers": (
-        "customers(customer_id PK, full_name, state, credit_score INTEGER, customer_since DATE, preferred_contact)\n"
-        "  preferred_contact: 'Email'|'Phone'|'Mail'\n"
-        "  Policyholders and insurance customers; credit score and tenure data."
-    ),
-    "agents": (
-        "agents(agent_id PK, full_name, license_number UNIQUE, region, hire_date DATE, commission_rate REAL)\n"
-        "  Insurance sales agents who sell and service policies.\n"
-        "  commission_rate: decimal fraction e.g., 0.06 = 6%"
-    ),
-    "underwriters": (
-        "underwriters(underwriter_id PK, full_name, certification, specialization, active INTEGER)\n"
-        "  certification: 'CPCU'|'ARe'|'CUW'\n"
-        "  specialization: 'Auto'|'Property'|'Commercial'|'Health'\n"
-        "  active: 1=active, 0=inactive\n"
-        "  Staff who evaluate and approve insurance policy risk."
-    ),
-    "policy_coverages": (
-        "policy_coverages(coverage_id PK, policy_id FK→policies, coverage_type_id FK→coverage_types, "
-        "coverage_limit REAL, deductible REAL)\n"
-        "  Junction table mapping which coverage types are included in each policy, with limits and deductibles."
-    ),
-    "policy_endorsements": (
-        "policy_endorsements(endorsement_id PK, policy_id FK→policies, endorsement_type, "
-        "effective_date DATE, premium_change REAL, description)\n"
-        "  endorsement_type: 'Umbrella'|'Flood Rider'|'Earthquake'|'GAP'|'Business Interruption'\n"
-        "  Riders and add-ons attached to base policies; tracks premium impact."
-    ),
-    "premium_payments": (
-        "premium_payments(payment_id PK, policy_id FK→policies, due_date DATE, paid_date DATE nullable, "
-        "amount REAL, payment_method, status)\n"
-        "  payment_method: 'Credit Card'|'ACH'|'Check'|'Wire'\n"
-        "  status: 'Paid'|'Overdue'|'Pending'|'Waived'\n"
-        "  Tracks premium billing and payment history per policy."
-    ),
-    "insured_properties": (
-        "insured_properties(property_id PK, policy_id FK→policies, property_type, address_state, "
-        "year_built INTEGER, estimated_value REAL, occupancy_type)\n"
-        "  property_type: 'Residential'|'Commercial'|'Industrial'\n"
-        "  occupancy_type: 'Owner-Occupied'|'Rental'|'Vacant'\n"
-        "  Physical properties covered under property insurance policies."
-    ),
-    "insured_vehicles": (
-        "insured_vehicles(vehicle_id PK, policy_id FK→policies, make, model, year INTEGER, vin UNIQUE, estimated_value REAL)\n"
-        "  Vehicles covered under auto insurance policies: make, model, year, VIN, and estimated value."
-    ),
-    "risk_assessments": (
-        "risk_assessments(assessment_id PK, policy_id FK→policies, underwriter_id FK→underwriters, "
-        "assessed_date DATE, risk_score REAL 0-10, risk_category, notes)\n"
-        "  risk_category: 'Low'|'Medium'|'High'|'Very High'\n"
-        "  Underwriting risk evaluations for policies; higher score = higher risk."
-    ),
-    "inspection_reports": (
-        "inspection_reports(report_id PK, policy_id FK→policies, inspection_date DATE, inspector_name, "
-        "condition_rating, issues_found INTEGER, passed INTEGER)\n"
-        "  condition_rating: 'Excellent'|'Good'|'Fair'|'Poor'\n"
-        "  passed: 1=passed, 0=failed\n"
-        "  Physical inspection results for insured properties and vehicles."
-    ),
-    "claim_documents": (
-        "claim_documents(document_id PK, claim_id FK→claims, document_type, uploaded_at DATE, verified INTEGER)\n"
-        "  document_type: 'Police Report'|'Medical Record'|'Photo'|'Estimate'|'Affidavit'\n"
-        "  verified: 1=verified, 0=unverified\n"
-        "  Supporting documents and evidence attached to claims."
-    ),
-    "claim_assessments": (
-        "claim_assessments(assessment_id PK, claim_id FK→claims, adjuster_id FK→adjusters, "
-        "assessment_date DATE, estimated_loss REAL, recommended_payout REAL, notes)\n"
-        "  Adjuster loss evaluations: what they estimated and what payout they recommended per claim."
-    ),
-    "claim_payments": (
-        "claim_payments(payment_id PK, claim_id FK→claims, payment_date DATE, amount REAL, payment_method, status)\n"
-        "  payment_method: 'Check'|'ACH'|'Wire'\n"
-        "  status: 'Pending'|'Issued'|'Cleared'|'Cancelled'\n"
-        "  Actual payment disbursements made to claimants for approved claims."
-    ),
-    "claim_appeals": (
-        "claim_appeals(appeal_id PK, claim_id FK→claims, filed_date DATE, reason, decision, resolved_date DATE nullable)\n"
-        "  decision: 'Upheld'|'Overturned'|'Partial'|NULL if still pending\n"
-        "  Appeals filed by claimants contesting claim decisions."
-    ),
-    "repair_vendors": (
-        "repair_vendors(vendor_id PK, name, specialty, region, avg_rating REAL, approved INTEGER)\n"
-        "  specialty: 'Auto Body'|'Plumbing'|'Electrical'|'Roofing'|'General'\n"
-        "  approved: 1=on approved list, 0=suspended\n"
-        "  Repair and restoration vendors authorized to work on insured claims."
-    ),
-    "repair_estimates": (
-        "repair_estimates(estimate_id PK, claim_id FK→claims, vendor_id FK→repair_vendors, "
-        "submitted_date DATE, estimated_amount REAL, approved INTEGER, approved_amount REAL nullable)\n"
-        "  Vendor repair cost estimates submitted for claim approval; tracks whether estimate was accepted."
-    ),
-    "investigators": (
-        "investigators(investigator_id PK, name, specialization, region, active INTEGER)\n"
-        "  specialization: 'Auto Fraud'|'Property Fraud'|'Medical Fraud'|'Identity Theft'\n"
-        "  Special Investigations Unit (SIU) staff who investigate suspected fraud."
-    ),
-    "fraud_investigations": (
-        "fraud_investigations(investigation_id PK, claim_id FK→claims, investigator_id FK→investigators, "
-        "opened_date DATE, closed_date DATE nullable, outcome, confirmed_fraud INTEGER, savings REAL)\n"
-        "  outcome: 'Confirmed Fraud'|'No Fraud Found'|'Inconclusive'|NULL if open\n"
-        "  confirmed_fraud: 1=yes, 0=no; savings: dollar amount recovered\n"
-        "  Formal SIU investigations into suspicious claims."
-    ),
-    "reserve_estimates": (
-        "reserve_estimates(reserve_id PK, claim_id FK→claims, estimated_at DATE, "
-        "reserve_amount REAL, reserve_type, last_updated DATE)\n"
-        "  reserve_type: 'Case Reserve'|'IBNR'|'Bulk'\n"
-        "  Actuarial loss reserve calculations for open and IBNR claims."
-    ),
-    "regulatory_filings": (
-        "regulatory_filings(filing_id PK, state, filing_date DATE, filing_type, status, due_date DATE nullable, notes)\n"
-        "  filing_type: 'Rate Filing'|'Form Filing'|'Financial Statement'|'Market Conduct'\n"
-        "  status: 'Submitted'|'Approved'|'Rejected'|'Pending'\n"
-        "  State insurance department regulatory submissions and their approval status."
-    ),
-    "compliance_audits": (
-        "compliance_audits(audit_id PK, audit_date DATE, auditor_name, scope, findings INTEGER, result)\n"
-        "  scope: 'Claims Processing'|'Underwriting'|'Agent Conduct'|'Data Privacy'\n"
-        "  result: 'Satisfactory'|'Needs Improvement'|'Unsatisfactory'\n"
-        "  Internal compliance reviews; findings count and overall result."
-    ),
-    "agent_performance": (
-        "agent_performance(perf_id PK, agent_id FK→agents, period, policies_sold INTEGER, "
-        "renewals INTEGER, total_premium REAL, commission_earned REAL)\n"
-        "  period: quarterly string e.g., '2024-Q1'\n"
-        "  Agent KPI metrics per quarter: sales volume, renewal rate, premium and commission totals."
-    ),
-    "customer_risk_profiles": (
-        "customer_risk_profiles(profile_id PK, customer_id FK→customers, profile_date DATE, "
-        "overall_score REAL 0-100, claims_history_score REAL, payment_score REAL, risk_tier)\n"
-        "  risk_tier: 'Preferred'|'Standard'|'Non-Standard'|'High Risk'\n"
-        "  Composite customer risk scores combining claims history and payment behaviour."
-    ),
-}
+_SCHEMA_SQL = Path(__file__).parent / "schema.sql"
+
+
+def _parse_schema_chunks(sql_path: Path = _SCHEMA_SQL) -> dict[str, str]:
+    lines = sql_path.read_text().splitlines()
+    chunks: dict[str, str] = {}
+
+    for i, line in enumerate(lines):
+        m = re.match(r'\s*CREATE TABLE IF NOT EXISTS (\w+)\s*\(', line, re.I)
+        if not m:
+            continue
+        table_name = m.group(1)
+
+        # Find the nearest -- @desc comment above this CREATE TABLE
+        desc = ''
+        j = i - 1
+        while j >= 0:
+            prev = lines[j].strip()
+            if not prev:
+                break
+            if prev.startswith('--'):
+                comment = prev.lstrip('-').strip()
+                if comment.startswith('@desc '):
+                    desc = comment[6:].strip()
+                    break
+                j -= 1
+            else:
+                break
+
+        # Parse column definitions until );
+        sig_parts: list[str] = []
+        annotations: list[str] = []
+        k = i + 1
+        while k < len(lines):
+            raw = lines[k]
+            k += 1
+            stripped = raw.strip()
+            if stripped.startswith(');') or stripped == ')':
+                break
+            # Split off inline comment
+            inline = ''
+            if '--' in raw:
+                col_part, _, comment_part = raw.partition('--')
+                inline = comment_part.strip()
+                stripped = col_part.strip().rstrip(',').strip()
+            else:
+                stripped = stripped.rstrip(',').strip()
+            if not stripped:
+                continue
+            # Skip table-level constraints
+            if re.match(r'(PRIMARY\s+KEY|FOREIGN\s+KEY|UNIQUE\s*\(|CHECK\s*\()', stripped, re.I):
+                continue
+            parts = stripped.split()
+            if not parts:
+                continue
+            col_name = parts[0]
+            upper = stripped.upper()
+            col_type = parts[1].upper() if len(parts) > 1 else ''
+            if 'PRIMARY KEY' in upper:
+                sig_parts.append(f'{col_name} PK')
+            elif ref := re.search(r'REFERENCES\s+(\w+)\s*\(', stripped, re.I):
+                sig_parts.append(f'{col_name} FK→{ref.group(1)}')
+            elif col_type == 'DATE':
+                nullable = 'NOT NULL' not in upper
+                sig_parts.append(f'{col_name} DATE{" nullable" if nullable else ""}')
+            elif col_type == 'REAL':
+                sig_parts.append(f'{col_name} REAL')
+            elif ' UNIQUE' in upper:
+                sig_parts.append(f'{col_name} UNIQUE')
+            else:
+                sig_parts.append(col_name)
+            if inline:
+                annotations.append(f'  {col_name}: {inline}')
+
+        chunk_lines = [f'{table_name}({", ".join(sig_parts)})'] + annotations
+        if desc:
+            chunk_lines.append(f'  {desc}')
+        chunks[table_name] = '\n'.join(chunk_lines)
+
+    return chunks
+
+
+_TABLE_CHUNKS: dict[str, str] = _parse_schema_chunks()
+
 
 
 def get_table_chunks() -> list[dict[str, str]]:
