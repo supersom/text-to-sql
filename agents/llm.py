@@ -45,20 +45,24 @@ def _strip_ansi(text: str) -> str:
     return _ANSI_ESCAPE.sub('', text)
 
 
-def _chat_cli(backend: str, model: str, system: str, user: str) -> str:
+def _chat_cli(backend: str, model: str, system: str, user: str, non_interactive: bool = True) -> str:
     """Shell out to an installed CLI tool instead of calling the API."""
     merged = f"<system>\n{system}\n</system>\n\n{user}" if system else user
 
     if backend == "claude-cli":
-        cmd = ["claude", "-p", merged, "--model", model]
+        cmd = ["claude", "--model", model]
+        if non_interactive:
+            cmd.append("--print")
+        proc = subprocess.run(cmd, input=merged, capture_output=True, text=True, timeout=120)
     elif backend == "gemini-cli":
         cmd = ["gemini", "--skip-trust", "-p", merged]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     elif backend == "codex-cli":
         cmd = ["codex", "exec", merged]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     else:
         raise ValueError(f"Unknown CLI backend: {backend!r}")
 
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     if proc.returncode != 0:
         raise RuntimeError(
             f"{backend} exited {proc.returncode}: {(proc.stderr or proc.stdout).strip()}"
@@ -100,10 +104,11 @@ def chat(
     cache_system: bool = False,
     api_key: str | None = None,
     backend: str | None = None,
+    non_interactive: bool = True,
 ) -> str:
     effective_backend = backend or LLM_BACKEND
     if effective_backend != "api":
-        return _chat_cli(effective_backend, model, system, user)
+        return _chat_cli(effective_backend, model, system, user, non_interactive=non_interactive)
 
     global _last_call
     if LLM_MIN_INTERVAL > 0:
